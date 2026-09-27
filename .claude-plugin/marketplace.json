@@ -1,0 +1,14 @@
+{
+  "name": "dev-flow-marketplace",
+  "owner": {
+    "name": "Dimitris"
+  },
+  "plugins": [
+    {
+      "name": "dev-flow",
+      "source": "./plugins/dev-flow",
+      "description": "Spec-then-build workflow with model routing, bundled MCP servers, a retrying quality-gate stop hook, a pre-write guard for AGENTS.md/CLAUDE.md/rules, container-friendly per-edit checks, opt-in claude-mem memory, and nine dev skills."
+    }
+  ],
+  "description": "Private dev workflow plugins: spec-then-build with model routing, quality-gate hooks and dev skills."
+}

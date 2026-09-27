@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# TEMPLATE -> copy to .claude/lint-cmd in your repo and adapt.
+#
+# dev-flow's post-edit-check hook calls this after every file edit with the
+# repo-relative path as $1. Exit non-zero with a useful message on stderr/stdout
+# to send the failure back to Claude; exit 0 to pass.
+#
+# Use this when the toolchain lives in a container rather than on the host
+# (per-project PHP/Python/Java versions). You own translating the host path into
+# the container path -- that is the part the hook cannot guess.
+#
+# Verify it before trusting it:
+#   bash .claude/lint-cmd src/Some/File.php   # expect 0
+#   bash .claude/lint-cmd src/Broken.php      # expect non-zero + a real message
+set -u
+rel="${1:-}"
+[ -n "$rel" ] || exit 0
+
+SERVICE=php                   # the compose service that has the toolchain
+CONTAINER_ROOT=/var/www/html  # where this repo is mounted inside that service
+inside="$CONTAINER_ROOT/$rel"
+
+# -T: no TTY. Hooks have no terminal, so an interactive exec will hang or fail.
+# If the stack is not running, swap to:  docker compose run --rm "$SERVICE" "$@"
+dc() { docker compose exec -T "$SERVICE" "$@"; }
+
+# Fail fast and clearly if the container is not up, rather than emitting a
+# confusing docker error as if it were a lint failure.
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx "$SERVICE"; then
+  echo "dev-flow lint-cmd: compose service '$SERVICE' is not running; skipping per-edit checks."
+  echo "Start it (docker compose up -d $SERVICE) or switch dc() to 'docker compose run --rm'."
+  exit 0   # change to 'exit 1' if you would rather block edits when the stack is down
+fi
+
+case "$rel" in
+  *.php)
+    dc php -l "$inside" || exit 1
+    # dc vendor/bin/pint --test "$inside" || exit 1
+    # dc vendor/bin/phpstan analyse --no-progress --error-format=raw "$inside" || exit 1
+    ;;
+  *.py)
+    dc ruff check "$inside" || exit 1
+    dc ruff format --check "$inside" || exit 1
+    ;;
+  *.ts|*.tsx|*.js|*.jsx)
+    dc npx eslint "$inside" || exit 1
+    ;;
+  *.java)
+    # Per-file javac is rarely useful. Leave JVM builds to .claude/test-cmd.
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+exit 0

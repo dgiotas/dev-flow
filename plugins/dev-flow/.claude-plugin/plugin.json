@@ -1,0 +1,9 @@
+{
+  "name": "dev-flow",
+  "version": "1.5.1",
+  "description": "Spec-then-build workflow with model routing (Opus plans and reviews, Sonnet implements), bundled MCP servers, a retrying quality-gate stop hook, a pre-write guard for AGENTS.md/CLAUDE.md/rules, container-friendly per-edit checks, opt-in claude-mem memory, and nine dev skills.",
+  "author": {
+    "name": "Dimitris"
+  },
+  "license": "MIT"
+}

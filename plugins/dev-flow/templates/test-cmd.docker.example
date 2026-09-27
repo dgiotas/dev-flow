@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# TEMPLATE -> copy to .claude/test-cmd in your repo and adapt.
+#
+# The stop-gate hook runs this before Claude is allowed to finish a turn that
+# changed files. Non-zero blocks finishing and the output goes back to Claude.
+# Keep it FAST (ideally under ~60s): unit tests, lint, type checks -- not the
+# full integration suite.
+#
+# -T because hooks have no TTY. Use 'run --rm' instead of 'exec -T' if the stack
+# is not expected to be up already.
+set -u
+
+SERVICE=php
+
+# PHP / Laravel example
+docker compose exec -T "$SERVICE" vendor/bin/phpunit --stop-on-failure || exit 1
+docker compose exec -T "$SERVICE" vendor/bin/phpstan analyse --no-progress || exit 1
+
+# Python example
+# docker compose exec -T app ruff check . || exit 1
+# docker compose exec -T app pytest -x -q || exit 1
+
+# Node / TypeScript example
+# docker compose exec -T web npx tsc --noEmit || exit 1
+# docker compose exec -T web npm test --silent || exit 1
+
+# Java / Spring example (unit tests only -- skip integration tests here)
+# docker compose exec -T app ./mvnw -q -o test -DskipITs || exit 1
+
+exit 0

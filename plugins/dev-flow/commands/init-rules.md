@@ -1,0 +1,12 @@
+---
+description: Copy and adapt the plugin's stack rule templates (php-api, java-spring, python, node-ts) into this repo's .claude/rules
+argument-hint: <php|java|python|node|all>
+---
+
+Install rule templates for: $ARGUMENTS
+
+1. Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/rules/`: `php-api.md`, `java-spring.md`, `python.md`, `node-ts.md`. Map the argument to files (`php` -> php-api, `java` -> java-spring, `python` -> python, `node` -> node-ts, `all` -> every one that matches languages actually present in this repo).
+2. Inspect the repo first (manifests, lint config, compose files, and the existing guidance file — check `AGENTS.md` **before** `CLAUDE.md` and treat whichever exists as the source of truth, per the `setup-rules` skill).
+3. For each template, verify every line against the repo. Remove lines that do not apply or contradict existing conventions; adjust commands (test, lint, static analysis) to the real ones you confirmed by running them. If the toolchain runs in a container, the commands must be the containerised form (`docker compose exec -T <service> …`) — take the service name and container path from the compose file or the guidance file, never guess. Remove the TEMPLATE comment once verified.
+4. Write results to `.claude/rules/<name>.md` in the repo. If a target file already exists with different content, the `pre-write-guard` hook will block the write and hand you a diff and an exact approval-marker command in its message — show the diff to the user, wait for an explicit yes, run that exact command, then retry. Do not try to bypass this. Then summarise what you kept, changed and dropped, with the evidence.
+5. Offer to create `.claude/test-cmd` for the stop-gate hook if it is missing, and `.claude/lint-cmd` if this project's linters do not run on the host (templates: `${CLAUDE_PLUGIN_ROOT}/templates/test-cmd.docker.example` and `lint-cmd.docker.example`).
