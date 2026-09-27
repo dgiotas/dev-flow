@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # dev-flow bootstrap. Safe to re-run.
-# Usage: bash install.sh [marketplace-source] [--with-memory] [--skip-superpowers] [--skip-codegraph]
+# Usage: bash install.sh [marketplace-source] [--with-memory] [--with-powerline]
+#                        [--skip-superpowers] [--skip-codegraph]
 #   marketplace-source: local path or GitHub "org/repo" (default: this folder)
 #   --with-memory:      also install claude-mem for cross-session recall (opt-in)
+#   --with-powerline:   also install claude-powerline (cosmetic status line, opt-in)
 #
 # Design notes (learned the hard way):
 #  * Never hide output blindly. Output is captured and printed on failure.
@@ -16,15 +18,17 @@ set -u
 export GIT_TERMINAL_PROMPT=0
 
 WITH_MEMORY=0
+WITH_POWERLINE=0
 SKIP_SUPERPOWERS=0
 SKIP_CODEGRAPH=0
 SRC=""
 for arg in "$@"; do
   case "$arg" in
     --with-memory)      WITH_MEMORY=1 ;;
+    --with-powerline)   WITH_POWERLINE=1 ;;
     --skip-superpowers) SKIP_SUPERPOWERS=1 ;;
     --skip-codegraph)   SKIP_CODEGRAPH=1 ;;
-    -h|--help)          sed -n '2,8p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)          sed -n '2,7p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *)                  SRC="$arg" ;;
   esac
 done
@@ -117,7 +121,29 @@ else
   echo "  ...   skipped. Re-run with --with-memory to install claude-mem (cross-session recall)."
 fi
 
-echo; echo "5) Verify"
+echo; echo "5) claude-powerline status line (optional, cosmetic, off by default)"
+if [ "$WITH_POWERLINE" = "1" ]; then
+  # Warn before touching an existing status line -- its wizard replaces it.
+  settings="$HOME/.claude/settings.json"
+  if [ -f "$settings" ] && command -v jq >/dev/null && jq -e '.statusLine' "$settings" >/dev/null 2>&1; then
+    warn "you already have a statusLine configured; the /powerline wizard will replace it:"
+    printf '         | %s\n' "$(jq -c '.statusLine' "$settings" 2>/dev/null)"
+    warn "back it up first if you want it:  cp \"$settings\" \"$settings.bak\""
+  fi
+  run_step 120 "add marketplace Owloops/claude-powerline" \
+    claude plugin marketplace add Owloops/claude-powerline
+  run_step 180 "install claude-powerline" \
+    claude plugin install -y claude-powerline@claude-powerline
+  echo "         FINAL STEP IS MANUAL: run  /powerline  inside Claude Code."
+  echo "         That wizard writes ~/.claude/claude-powerline.json and wires statusLine;"
+  echo "         it is interactive, so this script cannot run it for you."
+  echo "         Needs a Nerd Font for the glyphs -- otherwise use --charset=text."
+  echo "         Themes: dark light nord tokyo-night rose-pine gruvbox. Visual config: powerline.owloops.com"
+else
+  echo "  ...   skipped. Re-run with --with-powerline for the claude-powerline status line."
+fi
+
+echo; echo "6) Verify"
 run_step 60 "claude plugin list" claude plugin list || true
 echo
 echo "Done. Restart Claude Code, then check /plugin, /mcp, /agents and /hooks."

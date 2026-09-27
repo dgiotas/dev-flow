@@ -1,4 +1,4 @@
-# dev-flow: private Claude Code plugin (v1.5.1)
+# dev-flow: private Claude Code plugin (v1.7)
 
 A spec-then-build workflow with **model routing** (a strong model plans and reviews, a cheaper one codes), quality-gate hooks, bundled MCP servers and nine dev skills. Built to sit alongside obra/superpowers.
 
@@ -10,14 +10,14 @@ bash install.sh                 # checks prerequisites, installs Superpowers + d
 bash install.sh --with-memory   # same, plus claude-mem for cross-session recall (see Memory below)
 ```
 
-Flags: `--with-memory`, `--skip-superpowers`, `--skip-codegraph`, `--help`. Re-running is safe. Every step is time-limited and shows its own output on failure, so it reports errors instead of stalling.
+Flags: `--with-memory`, `--with-powerline`, `--skip-superpowers`, `--skip-codegraph`, `--help`. Re-running is safe. Every step is time-limited and shows its own output on failure, so it reports errors instead of stalling.
 
 Restart Claude Code, then verify with `/plugin`, `/mcp`, `/agents`, `/hooks`. Then, once per repo you work in:
 
 ```text
+/dev-flow:init-hooks            # reads your AGENTS.md/Makefile/CI, writes + verifies .claude/test-cmd (and lint-cmd)
 /dev-flow:init-rules php        # or java | python | node | all: copies verified rule templates into .claude/rules
-"Set up CLAUDE.md for this repo"   # setup-rules skill
-echo 'vendor/bin/phpunit --stop-on-failure' > .claude/test-cmd   # your fast check; enables the stop gate
+"Set up AGENTS.md for this repo" # setup-rules skill (guidance file + rules + hook commands in one go)
 cd <repo> && codegraph init     # optional: structure index (add .codegraph/ to .gitignore)
 ```
 
@@ -71,6 +71,7 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Command | `/dev-flow:spec <feature>` | Opus plans: writes `docs/specs/<slug>.md` and `docs/plans/<slug>.md`. No code. |
 | Command | `/dev-flow:build <slug>` | Sonnet orchestrates and implements task by task, then verify, then Opus review. |
 | Command | `/dev-flow:init-rules <stack>` | Adapts stack rule templates into the repo's `.claude/rules`. |
+| Command | `/dev-flow:init-hooks` | Derives `.claude/test-cmd` / `lint-cmd` from your AGENTS.md, Makefile, manifests or CI, then verifies them. |
 | Agent | `spec-architect` (Opus) | Investigates and writes spec and plan. |
 | Agent | `implementer` (Sonnet) | Implements one plan task test-first, escalates with `BLOCKED`. |
 | Agent | `reviewer` (Opus) | Read-only diff review against spec. |
@@ -100,6 +101,48 @@ Only after that marker exists does the retried Write succeed — and it's consum
 
 Add `.claude/.approved-writes/` to `.gitignore`.
 
+## The three per-repo config files
+
+None are created by installing; they are per repo, and everything works without them (the gates just stay inactive). Three ways to make them: `/dev-flow:init-hooks` (derives them from what the repo documents, then verifies), the `setup-rules` skill (same thing as part of a larger setup), or by hand — they are plain text.
+
+| File | Format | Purpose | Commit it? |
+|---|---|---|---|
+| `.claude/test-cmd` | shell script body, run as `bash .claude/test-cmd` from the repo root; exit 0 = pass | The stop gate. Runs before Claude may finish any turn that changed files. | Yes — shared team gate |
+| `.claude/lint-cmd` | shell script body; receives the **repo-relative path of the edited file as `$1`** | Per-edit check. Replaces the built-in native checks — only needed for containerised or custom toolchains. | Yes |
+| `.claude/test-cmd-retries` | a single number, e.g. `3` | How many times the stop gate blocks before giving up loudly. Default 3 when absent. | Personal preference |
+
+No shebang and no `chmod` needed — both are invoked through `bash`.
+
+By hand:
+
+```bash
+# host toolchain
+printf 'vendor/bin/phpunit --stop-on-failure && vendor/bin/phpstan analyse --no-progress\n' > .claude/test-cmd
+
+# containerised toolchain (-T because hooks have no TTY)
+printf 'docker compose exec -T php vendor/bin/phpunit --stop-on-failure\n' > .claude/test-cmd
+cat > .claude/lint-cmd <<'EOF'
+set -u
+inside="/var/www/html/$1"
+case "$1" in
+  *.php) docker compose exec -T php php -l "$inside" || exit 1 ;;
+esac
+EOF
+
+printf '2\n' > .claude/test-cmd-retries     # optional; default is 3
+```
+
+Then verify the way `/dev-flow:init-hooks` does — a gate you have not seen fail is not a gate:
+
+```bash
+bash .claude/test-cmd; echo "expect 0 -> $?"
+bash .claude/lint-cmd src/Some/File.php; echo "expect 0 -> $?"
+printf '<?php bad syntax ' > tmp-check.php
+bash .claude/lint-cmd tmp-check.php; echo "expect non-zero -> $?"; rm tmp-check.php
+```
+
+Keep `test-cmd` fast (ideally under ~60s): unit tests, lint and type checks — not integration or e2e suites. Add `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log` and `.claude/.approved-writes/` to `.gitignore`.
+
 ## Stop gate: retries and giving up
 
 `stop-gate` blocks Claude from finishing while `.claude/test-cmd` fails, up to a cap, then gives up loudly instead of blocking forever:
@@ -116,6 +159,26 @@ Nothing is installed by default; `CLAUDE.md`, `.claude/rules`, and the specs/pla
 - Open its config and select the **local/offline** provider — recent versions can default some integrations to a hosted service.
 - It captures tool output via hooks, so review what it stores before pointing it at the PCI-adjacent app or anything with secrets.
 - It records whatever Claude concluded, not just what you confirmed, so treat its recall as a lead to verify, not a fact — put anything that must be trusted into `CLAUDE.md` instead.
+
+## Status line (claude-powerline, cosmetic)
+
+`bash install.sh --with-powerline` adds [Owloops/claude-powerline](https://github.com/Owloops/claude-powerline) — a powerline-style status line for Claude Code. Purely cosmetic; nothing else here depends on it.
+
+The installer adds its marketplace and installs the plugin (both verified working). **One step stays manual**, because it is an interactive wizard a script cannot drive:
+
+```text
+/powerline        # run this inside Claude Code
+```
+
+That writes `~/.claude/claude-powerline.json` and wires `statusLine` into your settings. The plugin ships exactly one component — that wizard command.
+
+- **It replaces any status line you already have.** The installer detects an existing `statusLine` in `~/.claude/settings.json`, prints it, and tells you to back it up first.
+- **Needs a Nerd Font** for the glyphs, or the segments render as boxes — use `--charset=text` instead.
+- Themes: `dark` (default), `light`, `nord`, `tokyo-night`, `rose-pine`, `gruvbox`, `custom`. Styles: `minimal`, `powerline`, `capsule`, `tui`. Visual configurator at powerline.owloops.com.
+- Skipping the wizard, the manual equivalent is a `statusLine` entry in `settings.json`:
+  ```json
+  { "statusLine": { "type": "command", "command": "npx -y @owloops/claude-powerline@latest --style=powerline" } }
+  ```
 
 ## Daily use
 
@@ -179,7 +242,14 @@ claude plugin marketplace remove superpowers-marketplace
 claude mcp remove codegraph
 npm uninstall -g @colbymchenry/codegraph
 
-# 5. claude-mem, only if you installed it with --with-memory.
+# 5. claude-powerline, only if you installed it with --with-powerline
+claude plugin uninstall claude-powerline@claude-powerline
+claude plugin marketplace remove claude-powerline
+#    Then remove the statusLine it added, or restore your backup:
+#      jq 'del(.statusLine)' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json
+#      rm -f ~/.claude/claude-powerline.json
+
+# 6. claude-mem, only if you installed it with --with-memory.
 #    It installs its own hooks and a background worker, so use its own uninstaller:
 npx claude-mem uninstall        # if this fails, see https://github.com/thedotmack/claude-mem
 claude mcp list                 # then remove any leftover entry it registered
@@ -201,7 +271,7 @@ rm -rf .codegraph               # CodeGraph index
 
 If you kept a backup before first installing (`cp -r ~/.claude ~/.claude.bak-<date>`, `cp ~/.claude.json ~/.claude.json.bak-<date>`), restoring those is the fastest full reset.
 
-Verified: steps 2 and 3 were run for real (both plugins uninstalled and both marketplaces removed cleanly, confirmed with `claude plugin list` / `marketplace list`). Steps 4 and 5 (CodeGraph, claude-mem) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly.
+Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-powerline all uninstalled and their marketplaces removed cleanly, confirmed with `claude plugin list` / `marketplace list`). Steps 4 and 6 (CodeGraph, claude-mem) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly. The `settings.json` / `claude-powerline.json` cleanup in step 5 is also unverified; check the file before and after.
 
 ## Troubleshooting
 
