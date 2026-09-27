@@ -57,16 +57,18 @@ Common when each project pins its own runtime version. The host may have no `php
 - **Record the commands in `<guidance file>`** too, so a human and any other agent see the same thing.
 - Without `.claude/lint-cmd`, the post-edit hook simply skips tools it cannot find on the host — it does not report a false failure — so the stop gate becomes the real safety net. Say so in the summary.
 
-## Overwriting existing guidance or rule files
+## Changing existing guidance or rule files
 
-A `pre-write-guard` hook enforces this mechanically; it is not optional and not just this instruction. If `AGENTS.md`, `CLAUDE.md` or a `.claude/rules/*.md` file already exists and you try to write different content, the write is blocked and the hook's message hands you the exact diff and an exact `mkdir`/`printf` command that creates a single-use approval marker for that precise content.
+**Always show the user what will change and get an explicit yes before touching `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md`.** These files carry standing instructions; changing them silently is never acceptable, however small the change.
+
+A `pre-write-guard` hook enforces this mechanically — it is not optional and not merely this instruction. It covers `Write`, `Edit` **and** `MultiEdit`, so a targeted edit is gated exactly like a whole-file replace. Any change to an existing guarded file is blocked, and the hook's message hands you the precise change and an exact `mkdir`/`printf` command creating a single-use approval marker bound to that change.
 
 When blocked:
-1. Show the user the diff from the hook message verbatim. Wait for an explicit yes/no in this turn. Do not retry in the meantime.
-2. If they approve, run the exact command the hook gave you, then retry the same Write unchanged. It will now succeed and the marker is consumed.
-3. If they want changes, revise the content and expect a new block with a new diff and a new marker command — each distinct version needs its own approval.
+1. Show the user the change from the hook message verbatim. Wait for an explicit yes/no in this turn. Do not retry in the meantime.
+2. If they approve, run the exact command the hook gave you, then retry the same call unchanged. It will succeed and the marker is consumed.
+3. If they want something different, revise and expect a fresh block — each distinct change needs its own approval, and the marker is invalidated if the file changed meanwhile.
 
-Never try to route around this (writing in chunks with Edit, deleting the file first, disabling the hook) to avoid showing the diff.
+**Propose the complete intended result in ONE call.** Do not dribble a rewrite out as a series of small edits: the user should review one coherent change, not approve five fragments. Never try to route around the gate (splitting the change, switching tools, deleting and recreating the file, disabling the hook).
 
 ## Rules
 

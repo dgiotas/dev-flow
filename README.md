@@ -1,4 +1,4 @@
-# dev-flow: private Claude Code plugin (v1.7)
+# dev-flow: private Claude Code plugin (v1.8)
 
 A spec-then-build workflow with **model routing** (a strong model plans and reviews, a cheaper one codes), quality-gate hooks, bundled MCP servers and nine dev skills. Built to sit alongside obra/superpowers.
 
@@ -86,18 +86,20 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Skill | `db-migration` | Expand/migrate/contract, backfills, rollback. Never runs against shared DBs. |
 | Hook | `post-edit-check` | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | Hook | `stop-gate` | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
-| Hook | `pre-write-guard` | Blocks silent overwrites of `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md` (see below). |
+| Hook | `pre-write-guard` | Blocks any silent change (Write/Edit/MultiEdit) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md` (see below). |
 | MCP | context7, semble, chrome-devtools | Bundled in `.mcp.json`, start automatically. CodeGraph is set up by `install.sh`. |
 
-## Pre-write guard: CLAUDE.md and rules are never silently overwritten
+## Pre-write guard: guidance files are never changed silently
 
-This is a mechanical gate, not just an instruction the model might forget. `pre-write-guard` runs before every `Write` call. If the target is `CLAUDE.md` or `.claude/rules/*.md`, the file already exists, and the proposed content differs from what's on disk, the write is **blocked** (exit 2) and the message sent back to Claude contains:
+A mechanical gate, not just an instruction the model might skip. `pre-write-guard` runs before every `Write`, `Edit` **and** `MultiEdit`. If the target is `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md` and the file already exists, the change is **blocked** (exit 2) and the message sent back to Claude contains:
 
-- a unified diff of old vs. proposed content,
-- an instruction to show that diff to you verbatim and wait for an explicit yes/no,
-- the exact `mkdir`/`printf` command that creates a single-use approval marker keyed to the sha256 of that exact proposed content.
+- the precise change — a unified diff for a whole-file `Write`, or the exact before/after text for a targeted `Edit`/`MultiEdit`,
+- an instruction to show it to you verbatim and wait for an explicit yes/no,
+- the exact `mkdir`/`printf` command creating a single-use approval marker bound to that change.
 
-Only after that marker exists does the retried Write succeed — and it's consumed on use, so a different revision needs a fresh diff and a fresh marker. Identical content (no real change) and brand-new files pass straight through. Guarded paths: `AGENTS.md`, `CLAUDE.md`, `.claude/rules/*.md`. I tested the full cycle (block → approve → retry succeeds → marker consumed → a further change blocks again) directly against the script; I have not yet seen it fire inside a live Claude Code session.
+Only then does the retried call succeed, and the marker is consumed — so any revision needs a fresh approval. The marker hash binds path + exact change + the file's current content, so it can't be reused for a different change and is invalidated if the file moved on underneath it. No-op changes and brand-new files pass straight through.
+
+Verified by running the script against all of it: `Edit`, `MultiEdit` and `Write` each block; approve-then-retry succeeds and consumes the marker; a different change blocks again; a stale marker after the file changed blocks again; unguarded files and no-ops pass. Not yet observed firing inside a live Claude Code session.
 
 Add `.claude/.approved-writes/` to `.gitignore`.
 
@@ -277,9 +279,11 @@ Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-p
 
 **`install.sh` freezes / hangs with no output.** Fixed in v1.5.1 — upgrade. The cause: `claude plugin install` requires `-y` when stdout is not a TTY (which is always true inside a script), and v1.5 and earlier also sent output to `/dev/null`, so the confirmation prompt was invisible while the command waited for a keystroke. It looked frozen but was asking a question you couldn't see. The installer now passes `-y`, runs every command with `</dev/null` so nothing can block on a hidden prompt, sets `GIT_TERMINAL_PROMPT=0` so a private-repo clone errors instead of waiting for credentials, and wraps each step in `timeout` so a stall becomes a visible `TIMED OUT` warning. If you are stuck on an older copy, run the commands by hand: `claude plugin marketplace add <path>` then `claude plugin install -y dev-flow@dev-flow-marketplace`.
 
+**`setup-rules` changed AGENTS.md / CLAUDE.md without asking me.** Fixed in v1.8 — upgrade. Before that, `pre-write-guard` only matched the `Write` tool, so a targeted `Edit`/`MultiEdit` on an existing guidance file bypassed the gate entirely and the "show a diff and ask" step was only an instruction the model could skip. The hook now matches `Write|Edit|MultiEdit`. If a change still lands unannounced, check `jq '.hooks.PreToolUse' ~/.claude/plugins/**/dev-flow/hooks/hooks.json` shows that matcher, and confirm `/hooks` lists a PreToolUse entry.
+
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
-**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 12 (9 skills + the 3 commands), Agents 3, Hooks 3 (PreToolUse, PostToolUse, Stop), MCP servers 3.
+**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 13 (9 skills + the 4 commands), Agents 3, Hooks 3 (PreToolUse, PostToolUse, Stop), MCP servers 3.
 
 **Context cost.** `claude plugin details dev-flow` reports roughly **1,700 always-on tokens** per session for the whole plugin, with each skill's body loaded only when it fires. Worth checking yourself if you stack several plugins.
 
@@ -288,7 +292,6 @@ Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-p
 - Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn, and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
 - CodeGraph and Semble build indexes on first use and can be slow on large repos.
 - The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism above is new and tested standalone (not yet inside a live Claude Code stop-hook cycle).
-- The pre-write guard covers only the `Write` tool (whole-file replace) on `AGENTS.md`, `CLAUDE.md` and `.claude/rules/*.md`; targeted `Edit`/`MultiEdit` calls on those files are not gated, since they carry their own explicit old/new text rather than silently replacing the file.
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.

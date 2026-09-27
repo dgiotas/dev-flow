@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# PreToolUse guard for whole-file overwrites of AGENTS.md, CLAUDE.md and
-# .claude/rules/*.md -- the files that carry a project's standing instructions.
+# PreToolUse guard for AGENTS.md, CLAUDE.md and .claude/rules/*.md -- the files
+# that carry a project's standing instructions.
 #
-# This does NOT trust the model to "remember" to ask. It mechanically blocks any
-# Write that would change an existing guarded file's content, unless a one-time
-# approval marker matching the exact proposed content's hash already exists.
-# The block message hands Claude the exact commands to create that marker, so the
-# only way past this gate is: show the user the diff -> get a yes -> write the
-# marker -> retry. Exit 2 = block, stderr goes back to Claude. Exit 0 = allow.
+# Covers Write (whole-file replace) AND Edit / MultiEdit (targeted changes), so a
+# targeted edit cannot slip a change in without the diff being shown. This does
+# NOT trust the model to "remember" to ask: any change to an existing guarded file
+# is blocked unless a one-time approval marker matching that exact change already
+# exists. The block message hands Claude the exact command to create the marker,
+# so the only route through is: show the change -> get a yes -> write the marker
+# -> retry. Exit 2 = block, stderr goes back to Claude. Exit 0 = allow.
+#
+# The marker hash binds the approval to (path + the exact change + the file's
+# current content), so it cannot be reused for a different change, and it is
+# invalidated if the file moves on underneath it. Pure bash/jq/sha256sum -- no
+# reconstruction of the post-edit file is needed, and none is attempted.
 set -u
 input=$(cat)
 
@@ -16,11 +22,13 @@ hash_of() {
   else shasum -a 256 | cut -d' ' -f1
   fi
 }
+jqr() { printf '%s' "$input" | jq -r "$1"; }
+trunc() { head -c 4000; }
 
-tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
-[ "$tool" = "Write" ] || exit 0
+tool=$(jqr '.tool_name // empty')
+case "$tool" in Write|Edit|MultiEdit) ;; *) exit 0 ;; esac
 
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')
+file=$(jqr '.tool_input.file_path // empty')
 [ -n "$file" ] || exit 0
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
@@ -35,40 +43,96 @@ case "$rel" in .claude/rules/*.md) guarded=1 ;; esac
 # New file: nothing to protect yet.
 [ -f "$file" ] || exit 0
 
-new_content=$(printf '%s' "$input" | jq -r '.tool_input.content // empty')
 old_content=$(cat "$file" 2>/dev/null || true)
+cur_hash=$(printf '%s' "$old_content" | hash_of)
 
-# No actual change: let it through without ceremony.
-if [ "$new_content" = "$old_content" ]; then exit 0; fi
+# Build (a) a human-readable preview of the change and (b) the payload whose hash
+# the approval marker must match.
+preview=""
+payload=""
+case "$tool" in
+  Write)
+    new_content=$(jqr '.tool_input.content // empty')
+    # No actual change: let it through without ceremony.
+    [ "$new_content" = "$old_content" ] && exit 0
+    preview="Whole-file replace. Diff (current -> proposed):
+$(diff -u "$file" <(printf '%s' "$new_content") 2>&1 | tail -150)"
+    payload="WRITE
+$rel
+$cur_hash
+$new_content"
+    ;;
+  Edit)
+    old_s=$(jqr '.tool_input.old_string // empty')
+    new_s=$(jqr '.tool_input.new_string // empty')
+    all=$(jqr '.tool_input.replace_all // false')
+    [ "$old_s" = "$new_s" ] && exit 0
+    preview="Targeted edit (replace_all=$all).
+--- would replace this text -------------------------------
+$(printf '%s' "$old_s" | trunc)
++++ with this text ----------------------------------------
+$(printf '%s' "$new_s" | trunc)
+-----------------------------------------------------------"
+    payload="EDIT
+$rel
+$cur_hash
+$all
+$old_s
+>>>---<<<
+$new_s"
+    ;;
+  MultiEdit)
+    n=$(jqr '(.tool_input.edits // []) | length')
+    [ "$n" = "0" ] && exit 0
+    preview="Targeted multi-edit ($n changes)."
+    payload="MULTIEDIT
+$rel
+$cur_hash"
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      o=$(jqr ".tool_input.edits[$i].old_string // empty")
+      w=$(jqr ".tool_input.edits[$i].new_string // empty")
+      preview="$preview
+--- [$((i+1))/$n] would replace ----------------------------
+$(printf '%s' "$o" | trunc)
++++ [$((i+1))/$n] with -------------------------------------
+$(printf '%s' "$w" | trunc)"
+      payload="$payload
+EDIT $i
+$o
+>>>---<<<
+$w"
+      i=$((i+1))
+    done
+    preview="$preview
+-----------------------------------------------------------"
+    ;;
+esac
 
-new_hash=$(printf '%s' "$new_content" | hash_of)
+want_hash=$(printf '%s' "$payload" | hash_of)
 marker_dir=".claude/.approved-writes"
-marker_name="${rel//\//__}.approved"
-marker="$marker_dir/$marker_name"
+marker="$marker_dir/${rel//\//__}.approved"
 
-if [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null | tr -d '[:space:]')" = "$new_hash" ]; then
+if [ -f "$marker" ] && [ "$(tr -d '[:space:]' < "$marker" 2>/dev/null)" = "$want_hash" ]; then
   rm -f "$marker" # single-use
   exit 0
 fi
 
-diff_out=$(diff -u "$file" <(printf '%s' "$new_content") 2>&1 | tail -150)
-
 {
-  echo "BLOCKED: this would overwrite an existing protected file: $rel"
-  echo "Protected files (AGENTS.md, CLAUDE.md, .claude/rules/*.md) are never silently overwritten."
+  echo "BLOCKED: $tool would change an existing protected file: $rel"
+  echo "AGENTS.md, CLAUDE.md and .claude/rules/*.md are never changed without the user seeing it first."
   echo
-  echo "Diff (old -> new):"
-  echo "$diff_out"
+  echo "$preview"
   echo
-  echo "Required next step: show this diff to the user verbatim and wait for an"
-  echo "explicit yes/no reply in this turn before doing anything else. Do not retry"
-  echo "the write until they approve."
+  echo "Required next step: show the user the change above verbatim and wait for an"
+  echo "explicit yes/no reply in this turn. Do not retry, and do not work around this"
+  echo "by splitting the change up, using a different tool, or recreating the file."
   echo
-  echo "If they approve this exact content, run this, then retry the same Write unchanged:"
-  echo "  mkdir -p \"$marker_dir\" && printf '%s' \"$new_hash\" > \"$marker\""
+  echo "If they approve THIS exact change, run this, then retry the same call unchanged:"
+  echo "  mkdir -p \"$marker_dir\" && printf '%s' \"$want_hash\" > \"$marker\""
   echo
-  echo "If they want changes instead, propose new content and repeat this process --"
-  echo "each distinct version needs its own approval (the marker is single-use and"
-  echo "content-specific)."
+  echo "The marker is single-use and bound to this exact change and the file's current"
+  echo "content, so any revision needs a fresh approval. Prefer proposing the complete"
+  echo "intended result in ONE call, so the user reviews one coherent change."
 } >&2
 exit 2
