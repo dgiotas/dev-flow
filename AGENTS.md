@@ -24,7 +24,7 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 - `plugins/dev-flow/hooks/scripts/*.sh` — the three hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
-- `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline).
+- `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`.
 
 ## Conventions
 

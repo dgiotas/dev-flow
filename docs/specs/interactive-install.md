@@ -228,7 +228,7 @@ chosen path will make:
 | dev-flow | 2 (always) |
 | CodeGraph | 0 if unselected or no `npm`; 1 if `codegraph` already present (`codegraph install` only); else 2 |
 | claude-mem | 1 if selected and `npx` present, else 0 |
-| powerline | 2 |
+| powerline | 2 if selected, else 0 |
 | verify | 1 |
 
 Bar, redrawn on the last line, ~24 cells fixed width:
