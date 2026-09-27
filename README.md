@@ -1,4 +1,4 @@
-# dev-flow: private Claude Code plugin (v1.8)
+# dev-flow: private Claude Code plugin (v1.9)
 
 A spec-then-build workflow with **model routing** (a strong model plans and reviews, a cheaper one codes), quality-gate hooks, bundled MCP servers and nine dev skills. Built to sit alongside obra/superpowers.
 
@@ -34,16 +34,40 @@ Required: Claude Code, `jq`, `git`. Optional: Node 18+ and `uv` (only for the Co
 
 ## AGENTS.md or CLAUDE.md
 
-`setup-rules` and `/dev-flow:init-rules` check the repo root and **follow the convention already there** instead of imposing one:
+`setup-rules` and `/dev-flow:init-rules` run a detector first and follow the convention already in the repo instead of imposing one:
 
-| Found in repo | What gets written |
+```bash
+bash plugins/dev-flow/scripts/guidance-target.sh    # prints link_kind / canonical / edit / never_edit
+```
+
+| Found in repo | What gets edited |
 |---|---|
-| `AGENTS.md` | That file is the source of truth — guidance goes there, no competing `CLAUDE.md` is created |
+| `CLAUDE.md` is a **symlink** to `AGENTS.md`, a **hard link** to it, or **imports** it (`@AGENTS.md`) | **`AGENTS.md` only — `CLAUDE.md` is never touched** |
+| `AGENTS.md` only | `AGENTS.md` (+ a `CLAUDE.md` pointer so Claude Code loads it) |
 | `CLAUDE.md` only | `CLAUDE.md` |
-| Both | It asks which is canonical, and won't duplicate rules across both |
+| Both, unlinked | It asks which is canonical, and won't duplicate rules across both |
 | Neither | It asks; default is `AGENTS.md` plus a pointer |
 
-Claude Code reliably reads `CLAUDE.md`; whether it natively reads `AGENTS.md` depends on your version, so the skill doesn't assume it. When `AGENTS.md` is canonical it adds a pointer and tells you which it used — either a symlink (`ln -s AGENTS.md CLAUDE.md`, works on any version) or a `CLAUDE.md` containing just `@AGENTS.md` (Claude Code's import syntax, version-dependent). `pre-write-guard` protects `AGENTS.md` exactly like `CLAUDE.md`.
+### When CLAUDE.md is only a pointer, editing it is refused outright
+
+This is enforced, not advisory. If `CLAUDE.md` is linked to `AGENTS.md` in any of those three ways, `pre-write-guard` **refuses** every `Write`/`Edit`/`MultiEdit` to it and redirects to `AGENTS.md` — with no approve-and-retry path, because there is nothing worth approving:
+
+- **symlink or hard link** — writing to `CLAUDE.md` rewrites `AGENTS.md` *through the link*, so a diff shown for one file lands in the other. That is the dangerous case.
+- **`@AGENTS.md` import** — anything added there is duplicated or lost.
+
+Detection covers relative and broken symlinks, hard links (by inode), and an `@AGENTS.md` mention anywhere in the file (`@AGENTS.md`, `@./AGENTS.md`, `@docs/AGENTS.md`, or inline in a sentence). An independent `CLAUDE.md` with no link is *not* refused — it goes through normal diff-and-approve gating.
+
+Escape hatch, for the one legitimate case (you want to fix the pointer line itself). The model is told not to create this itself:
+
+```bash
+mkdir -p .claude/.approved-writes && touch .claude/.approved-writes/ALLOW-CLAUDE-MD-EDIT
+```
+
+It is single-use and only downgrades the refusal to the normal diff-and-approve gate.
+
+Verified against all of it: symlink, hard link, `@AGENTS.md` import, an inline import mention, a broken symlink, an independent `CLAUDE.md`, and the override — and confirmed that with a symlink in place `AGENTS.md` was left byte-for-byte untouched rather than silently rewritten.
+
+Claude Code reliably reads `CLAUDE.md`; whether it natively reads `AGENTS.md` depends on your version, so the skill doesn't assume it. When `AGENTS.md` is canonical and no pointer exists yet, it adds one and tells you which — a symlink (`ln -s AGENTS.md CLAUDE.md`, any version) or a `CLAUDE.md` containing just `@AGENTS.md` (import syntax, version-dependent).
 
 ## Containerised toolchains (no native php / python / java on the host)
 
@@ -86,7 +110,7 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Skill | `db-migration` | Expand/migrate/contract, backfills, rollback. Never runs against shared DBs. |
 | Hook | `post-edit-check` | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | Hook | `stop-gate` | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
-| Hook | `pre-write-guard` | Blocks any silent change (Write/Edit/MultiEdit) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md` (see below). |
+| Hook | `pre-write-guard` | Gates every change (Write/Edit/MultiEdit) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
 | MCP | context7, semble, chrome-devtools | Bundled in `.mcp.json`, start automatically. CodeGraph is set up by `install.sh`. |
 
 ## Pre-write guard: guidance files are never changed silently
@@ -294,6 +318,7 @@ Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-p
 - The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism above is new and tested standalone (not yet inside a live Claude Code stop-hook cycle).
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
+- The `ALLOW-CLAUDE-MD-EDIT` override is a guardrail, not a security boundary: the hook cannot tell who created the file, it only checks that it exists. The skill is instructed not to create it.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.

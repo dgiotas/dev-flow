@@ -40,6 +40,61 @@ case "$base" in AGENTS.md|CLAUDE.md) guarded=1 ;; esac
 case "$rel" in .claude/rules/*.md) guarded=1 ;; esac
 [ "$guarded" = "1" ] || exit 0
 
+# ---------------------------------------------------------------------------
+# HARD RULE: if CLAUDE.md is linked to AGENTS.md (symlink, hard link, or an
+# @AGENTS.md import), CLAUDE.md is only a pointer. Editing it is either
+# pointless or actively dangerous -- a write through a symlink silently rewrites
+# AGENTS.md while looking like a CLAUDE.md change. Refuse and redirect; do NOT
+# offer the normal approve-and-retry path, since there is nothing to approve.
+# ---------------------------------------------------------------------------
+if [ "$base" = "CLAUDE.md" ]; then
+  link_kind=none; link_detail=""
+  if [ -L "$file" ]; then
+    tgt=$(readlink "$file" 2>/dev/null || true)
+    case "$(basename -- "${tgt:-}")" in
+      AGENTS.md) link_kind=symlink; link_detail="$rel -> $tgt" ;;
+    esac
+  elif [ -f AGENTS.md ] && [ -f "$file" ]; then
+    ia=$(ls -Li AGENTS.md 2>/dev/null | awk '{print $1}')
+    ic=$(ls -Li "$file"   2>/dev/null | awk '{print $1}')
+    [ -n "$ia" ] && [ "$ia" = "$ic" ] && { link_kind=hardlink; link_detail="same inode ($ia)"; }
+  fi
+  if [ "$link_kind" = "none" ] && [ -f "$file" ] && [ ! -L "$file" ]; then
+    if grep -qE '@[.~/]*([A-Za-z0-9_.-]+/)*AGENTS\.md' "$file" 2>/dev/null; then
+      link_kind=import
+      link_detail=$(grep -nE '@[.~/]*([A-Za-z0-9_.-]+/)*AGENTS\.md' "$file" 2>/dev/null | head -3)
+    fi
+  fi
+
+  if [ "$link_kind" != "none" ]; then
+    override=".claude/.approved-writes/ALLOW-CLAUDE-MD-EDIT"
+    if [ -f "$override" ]; then
+      rm -f "$override" # single-use
+    else
+      {
+        echo "REFUSED: $rel is only a pointer to AGENTS.md ($link_kind)."
+        [ -n "$link_detail" ] && printf '  %s\n' "$link_detail"
+        echo
+        if [ "$link_kind" = "symlink" ] || [ "$link_kind" = "hardlink" ]; then
+          echo "Writing to it would silently rewrite AGENTS.md through the link, while"
+          echo "appearing to change $rel. That is never what is wanted here."
+        else
+          echo "It imports AGENTS.md, so guidance added here would be duplicated or lost."
+        fi
+        echo
+        echo "Put the change in AGENTS.md instead, and leave $rel alone. Re-issue the same"
+        echo "change targeting AGENTS.md (it is gated normally: you will be shown the diff"
+        echo "to confirm with the user)."
+        echo
+        echo "Do NOT create an override yourself. Only if the USER explicitly wants to edit"
+        echo "the pointer file itself (e.g. to fix the import line) they can run:"
+        echo "  mkdir -p .claude/.approved-writes && touch $override"
+      } >&2
+      exit 2
+    fi
+  fi
+fi
+
 # New file: nothing to protect yet.
 [ -f "$file" ] || exit 0
 

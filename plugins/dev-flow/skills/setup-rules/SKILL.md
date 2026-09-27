@@ -7,21 +7,32 @@ description: Analyze a repository and generate or update its agent guidance - AG
 
 Goal: short, accurate project guidance in the file this repo already uses, plus a few path-scoped rule files and working hook commands. Only include things you verified in this repo.
 
-## Which file to write (check this before writing anything)
+## Which file to write (run the detector before writing anything)
 
-Read the repo root first and follow the existing convention rather than imposing one:
+Do not eyeball this — run it, and follow what it says:
 
-1. **`AGENTS.md` exists** → it is the source of truth. Write the guidance there. Do not create a competing `CLAUDE.md` with the same content.
-2. **`CLAUDE.md` exists, no `AGENTS.md`** → write to `CLAUDE.md`.
-3. **Both exist** → ask which is canonical. Do not duplicate rules across both; two drifting copies are worse than one imperfect file. Offer to reduce the non-canonical one to a pointer.
-4. **Neither exists** → ask which the user wants. Default to `AGENTS.md` (the cross-tool convention) plus a pointer so Claude Code still loads it.
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/guidance-target.sh"
+```
 
-**Making sure Claude Code loads an `AGENTS.md`:** Claude Code reliably reads `CLAUDE.md`. Whether it also reads `AGENTS.md` natively depends on the version, so do not assume it — check, and if you cannot confirm it, add one of these pointers and say which you used:
+It prints `link_kind`, `canonical`, `edit`, and (when relevant) `never_edit`. Act on `edit`:
 
-- A symlink, which works regardless of version: `ln -s AGENTS.md CLAUDE.md`
-- Or a `CLAUDE.md` whose entire content is the import line `@AGENTS.md` (Claude Code's documented import syntax; version-dependent).
+| Situation | `edit` | What to do |
+|---|---|---|
+| `CLAUDE.md` is a **symlink** to `AGENTS.md`, a **hard link** to it, or **imports** it (`@AGENTS.md`) | `AGENTS.md` | **Put everything in `AGENTS.md` and never touch `CLAUDE.md`.** It is only a pointer. |
+| `AGENTS.md` only | `AGENTS.md` | Write there; it may need a `CLAUDE.md` pointer so Claude Code loads it (below). |
+| `CLAUDE.md` only | `CLAUDE.md` | Write there. |
+| Both exist, unlinked | `ask-the-user` | Ask which is canonical. Never duplicate rules across both; offer to reduce the other to a pointer. |
+| Neither | `ask-the-user` | Ask. Default: `AGENTS.md` plus a pointer. |
 
-Where this skill says `<guidance file>` below, it means whichever file step 1–4 selected.
+**Why `never_edit` is absolute:** when `CLAUDE.md` is a symlink or hard link, writing to it rewrites `AGENTS.md` *through the link* while looking like a `CLAUDE.md` change — so a diff you showed for one file silently lands in the other. When it is an import, anything added there is duplicated or lost. A `pre-write-guard` hook refuses these writes outright, with no approve-and-retry path, and tells you to target `AGENTS.md` instead. Do not create its override marker yourself; that exists only for the user who genuinely wants to fix the pointer line.
+
+**Making sure Claude Code loads an `AGENTS.md`** (only when no pointer exists yet): Claude Code reliably reads `CLAUDE.md`; whether it reads `AGENTS.md` natively is version-dependent, so do not assume. Add one pointer and say which you used:
+
+- A symlink, which works on any version: `ln -s AGENTS.md CLAUDE.md`
+- Or a `CLAUDE.md` containing only the import line `@AGENTS.md` (documented import syntax; version-dependent).
+
+Where this skill says `<guidance file>` below, it means whatever the detector reported as `edit`.
 
 ## Procedure
 
