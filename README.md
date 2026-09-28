@@ -10,7 +10,9 @@ bash install.sh                 # checks prerequisites, installs Superpowers + d
 bash install.sh --with-memory   # same, plus claude-mem for cross-session recall (see Memory below)
 ```
 
-Flags: `--with-memory`, `--with-powerline`, `--skip-superpowers`, `--skip-codegraph`, `--help`. Re-running is safe. Every step is time-limited and shows its own output on failure, so it reports errors instead of stalling.
+On a terminal, a plain `bash install.sh` shows an interactive checklist to pick components; passing any selection flag or running non-interactively (`-y`/`--non-interactive`, CI, or piped input) skips the prompt. `--dry-run` does not skip the prompt: on an interactive terminal it still shows the checklist, then exits after printing the Plan instead of installing anything.
+
+Flags: `--with-memory`, `--with-powerline`, `--skip-superpowers`, `--skip-codegraph`, `-y`/`--yes`/`--non-interactive`, `--no-color`, `--dry-run`, `--help`. Re-running is safe. Every step is time-limited and shows its own output on failure, so it reports errors instead of stalling.
 
 Restart Claude Code, then verify with `/plugin`, `/mcp`, `/agents`, `/hooks`. Then, once per repo you work in:
 
