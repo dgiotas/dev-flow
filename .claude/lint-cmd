@@ -1,0 +1,7 @@
+set -u
+f="$1"
+case "$f" in
+  *.json) jq empty "$f" ;;
+  *.sh)   bash -n "$f" ;;
+  *)      exit 0 ;;
+esac

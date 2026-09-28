@@ -1,6 +1,6 @@
 {
   "name": "dev-flow",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Spec-then-build workflow with model routing (Opus plans and reviews, Sonnet implements), bundled MCP servers, a retrying quality-gate stop hook, a pre-write guard that gates every change (write or edit) to AGENTS.md/CLAUDE.md/rules, container-friendly per-edit checks, opt-in claude-mem memory, nine dev skills, and commands to derive and verify the per-repo hook commands.",
   "author": {
     "name": "Dimitris"
