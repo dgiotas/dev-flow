@@ -9,7 +9,7 @@ A private Claude Code plugin marketplace repo: one plugin (`dev-flow`) providing
 | Validate the repo (JSON + shell syntax) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
-| Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push; colleagues run `/plugin update` |
+| Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push; colleagues run `claude plugin marketplace update` then `/plugin update`, then `/reload-plugins` or a new session |
 
 No package manager, no build step, no CI config in this repo (verified: no `.github/`, no `package.json`). `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo — is the closest thing to a test suite here.
 
@@ -39,6 +39,6 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 ## Hazards
 
 - No CI: nothing runs automatically on push. `.claude/test-cmd` only runs inside a Claude Code session, via the stop-gate hook.
-- Bumping `plugins/dev-flow/.claude-plugin/plugin.json` `version` is the release mechanism — forgetting it means colleagues' `/plugin update` sees no change.
+- Bumping `plugins/dev-flow/.claude-plugin/plugin.json` `version` is the release mechanism — forgetting it means colleagues' `/plugin update` sees no change. Non-Anthropic marketplaces (a local directory, or a non-Anthropic GitHub repo) don't auto-update, so an unbumped or un-updated plugin means colleagues keep running the copy they installed on day one, and its hooks silently behave like the old version.
 - If this repo ever runs the plugin's own hooks against itself, `pre-write-guard.sh`'s approval markers live under `.claude/.approved-writes/`, and the stop gate writes `.claude/.stop-gate-state` / `.claude/stop-gate-giveup.log` — keep those gitignored, they're local run state, not content to commit.
 - `README.md` marks several claims "not yet verified" / "unverified here" (e.g. whether command `model:` frontmatter actually pins the model live, hooks firing inside a real session). Don't restate those as settled fact.

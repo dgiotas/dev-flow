@@ -1,4 +1,4 @@
-# dev-flow: private Claude Code plugin (v1.9)
+# dev-flow: private Claude Code plugin (v1.10)
 
 A spec-then-build workflow with **model routing** (a strong model plans and reviews, a cheaper one codes), quality-gate hooks, bundled MCP servers and nine dev skills. Built to sit alongside obra/superpowers.
 
@@ -112,18 +112,20 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Skill | `db-migration` | Expand/migrate/contract, backfills, rollback. Never runs against shared DBs. |
 | Hook | `post-edit-check` | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | Hook | `stop-gate` | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
-| Hook | `pre-write-guard` | Gates every change (Write/Edit/MultiEdit) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
+| Hook | `pre-write-guard` | Gates every change (Write/Edit/MultiEdit, plus Bash commands that look like they write the file directly) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
 | MCP | context7, semble, chrome-devtools | Bundled in `.mcp.json`, start automatically. CodeGraph is set up by `install.sh`. |
 
 ## Pre-write guard: guidance files are never changed silently
 
-A mechanical gate, not just an instruction the model might skip. `pre-write-guard` runs before every `Write`, `Edit` **and** `MultiEdit`. If the target is `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md` and the file already exists, the change is **blocked** (exit 2) and the message sent back to Claude contains:
+A mechanical gate, not just an instruction the model might skip. `pre-write-guard` runs before every `Write`, `Edit`, `MultiEdit` **and** `Bash`. If the target is `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md` and the file already exists, the change is **blocked** (exit 2) and the message sent back to Claude contains:
 
 - the precise change — a unified diff for a whole-file `Write`, or the exact before/after text for a targeted `Edit`/`MultiEdit`,
 - an instruction to show it to you verbatim and wait for an explicit yes/no,
 - the exact `mkdir`/`printf` command creating a single-use approval marker bound to that change.
 
 Only then does the retried call succeed, and the marker is consumed — so any revision needs a fresh approval. The marker hash binds path + exact change + the file's current content, so it can't be reused for a different change and is invalidated if the file moved on underneath it. No-op changes and brand-new files pass straight through.
+
+If `jq` is missing, the guard exits 2 with a clear message naming the missing dependency, rather than allowing the write.
 
 Verified by running the script against all of it: `Edit`, `MultiEdit` and `Write` each block; approve-then-retry succeeds and consumes the marker; a different change blocks again; a stale marker after the file changed blocks again; unguarded files and no-ops pass. Not yet observed firing inside a live Claude Code session.
 
@@ -305,7 +307,20 @@ Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-p
 
 **`install.sh` freezes / hangs with no output.** Fixed in v1.5.1 — upgrade. The cause: `claude plugin install` requires `-y` when stdout is not a TTY (which is always true inside a script), and v1.5 and earlier also sent output to `/dev/null`, so the confirmation prompt was invisible while the command waited for a keystroke. It looked frozen but was asking a question you couldn't see. The installer now passes `-y`, runs every command with `</dev/null` so nothing can block on a hidden prompt, sets `GIT_TERMINAL_PROMPT=0` so a private-repo clone errors instead of waiting for credentials, and wraps each step in `timeout` so a stall becomes a visible `TIMED OUT` warning. If you are stuck on an older copy, run the commands by hand: `claude plugin marketplace add <path>` then `claude plugin install -y dev-flow@dev-flow-marketplace`.
 
-**`setup-rules` changed AGENTS.md / CLAUDE.md without asking me.** Fixed in v1.8 — upgrade. Before that, `pre-write-guard` only matched the `Write` tool, so a targeted `Edit`/`MultiEdit` on an existing guidance file bypassed the gate entirely and the "show a diff and ask" step was only an instruction the model could skip. The hook now matches `Write|Edit|MultiEdit`. If a change still lands unannounced, check `jq '.hooks.PreToolUse' ~/.claude/plugins/**/dev-flow/hooks/hooks.json` shows that matcher, and confirm `/hooks` lists a PreToolUse entry.
+**`setup-rules` changed AGENTS.md / CLAUDE.md without asking me.** Fixed in v1.8 — upgrade. Before that, `pre-write-guard` only matched the `Write` tool, so a targeted `Edit`/`MultiEdit` on an existing guidance file bypassed the gate entirely and the "show a diff and ask" step was only an instruction the model could skip. The hook now matches `Write|Edit|MultiEdit|Bash`. If a change still lands unannounced, check:
+```
+jq '.hooks.PreToolUse' ~/.claude/plugins/cache/*/dev-flow/*/hooks/hooks.json
+claude plugin list | grep -A3 dev-flow
+```
+`/dev-flow:init-hooks` now proves the guard end to end, so run that first.
+
+**The pre-write guard never fires / an edit to AGENTS.md went through.** You are almost certainly running a stale cached copy of the plugin. Before v1.8 the `PreToolUse` matcher was `Write` alone, so every `Edit` bypassed it entirely, and the guard did not cover `AGENTS.md` at all — only `CLAUDE.md` and `.claude/rules/*.md`. A plugin installed once stays frozen: a marketplace added from a local directory or a non-Anthropic GitHub repo has auto-update **off** by default, and even after an update the running session keeps the old plugin path until `/reload-plugins`. Check with `claude plugin list` and the cache path above, then fix it:
+```
+claude plugin marketplace update dev-flow-marketplace
+claude plugin update dev-flow@dev-flow-marketplace
+/reload-plugins        # or start a new session
+```
+From v1.10.0 the block message's second line names the version that fired, so a stale copy is self-reporting.
 
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
@@ -321,6 +336,7 @@ Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-p
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
 - The `ALLOW-CLAUDE-MD-EDIT` override is a guardrail, not a security boundary: the hook cannot tell who created the file, it only checks that it exists. The skill is instructed not to create it.
+- `Write`/`Edit` are gated mechanically; the `Bash` bypass is now closed for the common shapes (heredoc, `>`/`>>`, `tee`, `sed -i`/`perl -i`, `cp`, `mv`, `install`, `rm`/`unlink`/`shred`, `dd`, `truncate`, `git restore`/`git checkout -- `, `python -c`). This is command-text matching, a guardrail, not a boundary — obfuscated command text (a variable, a script file, base64), `node -e`/`ruby -e` one-liners that write files, and a directory-target `cp`/`mv` (e.g. `cp x.md .claude/rules/` without naming the destination file, so the guard never sees a `.md` filename to match) all still get through. The guard overall remains a guardrail against model error, not a security boundary.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.
