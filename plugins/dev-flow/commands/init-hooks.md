@@ -7,6 +7,40 @@ Set up the hook commands for this repo. Arguments (all optional): $ARGUMENTS
 
 Goal: the stop gate and per-edit check run this project's *real* commands. Do not invent commands, and do not finish until you have run what you wrote.
 
+## 0. Prove the pre-write guard is live (do this first)
+
+This repo's `pre-write-guard.sh` hook gates `Write`/`Edit` on `AGENTS.md`,
+`CLAUDE.md` and `.claude/rules/*.md`. It fails silently: a stale or unwired
+copy looks identical to a working one, because every non-match is a bare
+`exit 0`. Prove it fires before doing anything else.
+
+1. **Name the loaded copy.** State the plugin root path (`${CLAUDE_PLUGIN_ROOT}`
+   — Claude Code substitutes it inline in command Markdown) and run
+   `claude plugin list`. The last path segment of the plugin root is the
+   loaded version. If it differs from the version `claude plugin list`
+   reports, or is older than the marketplace's, say so and give the
+   remediation in step 3.
+2. **Probe it end to end, side-effect-free.** Create a throwaway guarded file
+   `.claude/rules/devflow-guard-probe.md` with the `Write` tool (a brand-new
+   guarded file is allowed by design), then issue an `Edit` on it changing
+   one word. The guard must block that `Edit` with
+   `BLOCKED: Edit would change an existing protected file`, and the second
+   line of the block message names the version that fired. Delete
+   `.claude/rules/devflow-guard-probe.md` afterwards, **whether or not it
+   blocked**. Do not create an approval marker, and do not retry the edit.
+   Probe the throwaway file, never `AGENTS.md` — if the guard is dead, a
+   probe against `AGENTS.md` would damage real guidance.
+3. **If the `Edit` was not blocked, stop and report.** The guard is not live
+   in this repo. Give the user exactly these steps, in order:
+   ```
+   claude plugin marketplace update dev-flow-marketplace
+   claude plugin update dev-flow@dev-flow-marketplace
+   /reload-plugins        # or start a new session
+   ```
+   then re-run `/dev-flow:init-hooks`. Note that a marketplace added from a
+   local directory or a non-Anthropic GitHub repo does not auto-update, so
+   this is a manual step. Do not try to fix the hook by editing anything.
+
 ## 1. Find the commands (read, do not guess)
 
 Look in this order and stop at the first authoritative answer, noting where each command came from:
@@ -59,6 +93,7 @@ A single number: how many times the stop gate blocks and lets Claude retry befor
 
 ## 7. Report
 
+- Whether the pre-write guard blocked the probe, and the plugin version and root path it reported.
 - Each file written, with the command in it and **where you found that command**.
 - Verification results: exit codes and the timing of `test-cmd`.
 - What you deliberately excluded (integration tests, etc.).
