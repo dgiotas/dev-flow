@@ -23,6 +23,7 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 - `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check) and `Stop` (stop-gate) to scripts in `hooks/scripts/`.
 - `plugins/dev-flow/hooks/scripts/*.sh` — the three hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
+- `plugins/dev-flow/scripts/hooks-policy.sh` — reports whether on-disk managed settings block hooks (`allowManagedHooksOnly`/`disableAllHooks`) or project permission rules; used by `init-hooks`/`onboard` step 0 to enter hookless mode after a dead guard probe.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
 - `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`; defaults to the dgiotas/dev-flow GitHub source when piped (curl | bash); DEV_FLOW_VERSION pins a dev-flow--v<ver> tag.
 - `uninstall.sh` — removes dev-flow (opt-in `--remove-tools` / `--remove-superpowers`); `curl | bash`-safe like `install.sh`.

@@ -11,7 +11,7 @@ You implement one task from an approved plan. You are the fast, cheaper model: y
 1. Read the task you were given and the spec section it references. Do not read the whole repo.
 2. **Test first**: write the failing test the task specifies. Run it and confirm it fails for the right reason.
 3. Implement the minimal change described. Match the surrounding code style. Follow any `CLAUDE.md` and `.claude/rules` that apply.
-4. Run the task's verify command and the tests for the touched module. Fix failures you caused.
+4. Run the task's verify command and the tests for the touched module. Fix failures you caused. If `.claude/lint-cmd` exists, run `bash .claude/lint-cmd <repo-relative-path>` for each file you changed. If `.claude/test-cmd` exists, run `bash .claude/test-cmd`. Both must exit 0 before you report. Do not rely on hooks to run them; they may be disabled by policy.
 5. Reply with a short report:
    - Files changed
    - Commands run and results
