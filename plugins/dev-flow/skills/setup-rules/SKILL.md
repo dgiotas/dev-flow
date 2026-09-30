@@ -68,11 +68,34 @@ Common when each project pins its own runtime version. The host may have no `php
 - **Record the commands in `<guidance file>`** too, so a human and any other agent see the same thing.
 - Without `.claude/lint-cmd`, the post-edit hook simply skips tools it cannot find on the host — it does not report a false failure — so the stop gate becomes the real safety net. Say so in the summary.
 
+## When hooks are disabled by policy (hookless mode)
+
+Hookless mode applies when the caller says so, or when
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/hooks-policy.sh"` reports `hooks=disabled`
+or `hooks=managed-only`. In that case, procedure step 3 also adds this section
+to `<guidance file>` (through the normal diff-and-approve flow), worded so it
+is also correct where hooks do run:
+
+```markdown
+## Quality gates
+dev-flow's hooks enforce these where hooks are allowed; where an organization's policy blocks plugin hooks, this instruction is the only enforcement:
+- After editing a file, run `bash .claude/lint-cmd <repo-relative-path>` (if `.claude/lint-cmd` exists) and fix failures before moving on.
+- Before saying work is done, `bash .claude/test-cmd` must exit 0.
+- Before changing `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md`, show the complete change and wait for an explicit yes.
+```
+
+In hookless mode, `.claude/lint-cmd` is worth writing even on a host
+toolchain, not only a containerised one: the native per-edit checks live only
+in the hook, so without a written `.claude/lint-cmd` nothing checks individual
+files at all.
+
 ## Changing existing guidance or rule files
 
 **Always show the user what will change and get an explicit yes before touching `AGENTS.md`, `CLAUDE.md` or `.claude/rules/*.md`.** These files carry standing instructions; changing them silently is never acceptable, however small the change.
 
 A `pre-write-guard` hook enforces this mechanically — it is not optional and not merely this instruction. It covers `Write`, `Edit` **and** `MultiEdit`, so a targeted edit is gated exactly like a whole-file replace. Any change to an existing guarded file is blocked, and the hook's message hands you the precise change and an exact `mkdir`/`printf` command creating a single-use approval marker bound to that change.
+
+When hooks are disabled by policy there is no such hook. The instruction above, and any `ask` permission rules `/dev-flow:init-hooks` set up, are then the only gate, so showing the full change first is on you.
 
 When blocked:
 1. Show the user the change from the hook message verbatim. Wait for an explicit yes/no in this turn. Do not retry in the meantime.

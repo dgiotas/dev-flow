@@ -26,20 +26,83 @@ copy looks identical to a working one, because every non-match is a bare
    one word. The guard must block that `Edit` with
    `BLOCKED: Edit would change an existing protected file`, and the second
    line of the block message names the version that fired. Delete
-   `.claude/rules/devflow-guard-probe.md` afterwards, **whether or not it
-   blocked**. Do not create an approval marker, and do not retry the edit.
-   Probe the throwaway file, never `AGENTS.md` — if the guard is dead, a
-   probe against `AGENTS.md` would damage real guidance.
-3. **If the `Edit` was not blocked, stop and report.** The guard is not live
-   in this repo. Give the user exactly these steps, in order:
+   `.claude/rules/devflow-guard-probe.md` afterwards whether or not it
+   blocked. Do not create an approval marker, and do not retry the edit. If
+   the guard blocked the delete too, leave it and give the user
+   `rm .claude/rules/devflow-guard-probe.md`. Probe the throwaway file, never
+   `AGENTS.md` — if the guard is dead, a probe against `AGENTS.md` would
+   damage real guidance.
+3. **If the `Edit` was not blocked, find out why.**
+   1. Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/hooks-policy.sh"` and show its
+      output.
+   2. `hooks=disabled` or `hooks=managed-only`: the organization's managed
+      settings block dev-flow's hooks. Say so, quoting the script's `summary`
+      and `hooks_source`. Tell the user the real fix is an admin
+      force-enabling `dev-flow@dev-flow-marketplace` with `[true]` in managed
+      `enabledPlugins`, because hooks of force-enabled plugins are exempt from
+      the policy. Do not tell them to update the plugin — that cannot help
+      here. Then continue in **hookless mode** (below).
+   3. `hooks=not-found`: the on-disk sources show no restriction, so ask the
+      user which of two things is going on:
+      - (a) a stale or unwired copy — give the existing update steps and stop:
+        ```
+        claude plugin marketplace update dev-flow-marketplace
+        claude plugin update dev-flow@dev-flow-marketplace
+        /reload-plugins        # or start a new session
+        ```
+        then re-run `/dev-flow:init-hooks`. Note that a marketplace added from
+        a local directory or a non-Anthropic GitHub repo does not auto-update,
+        so this is a manual step.
+      - (b) the org's policy comes from a source this script cannot read
+        (server-managed / claude.ai console policy is not on disk). Check
+        `/status` → "Setting sources": if it shows something like
+        `Enterprise managed settings (remote)` rather than a local file or
+        plist, that confirms it. Continue in hookless mode.
+   4. Never try to re-enable hooks by editing any settings file.
+
+### Hookless mode
+
+No pre-write guard, no per-edit check, no stop gate run automatically. The
+remaining steps in this command still write and verify `.claude/test-cmd` and
+`.claude/lint-cmd` — the `implementer` agent and the `verify-done` skill run
+those explicitly, without needing a hook.
+
+**Guard substitute.** If `hooks-policy.sh` reported `permission_rules=managed-only`,
+say the guard substitute is instruction-only on this machine (project/local
+permission rules are ignored under that policy) and write nothing. Otherwise:
+
+1. Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guidance-target.sh"` to learn
+   whether `CLAUDE.md` is a pointer (`never_edit=CLAUDE.md`).
+2. Show the user the exact rules below and get an explicit yes before writing
+   anything:
+   - `permissions.ask`: `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)`
+   - `permissions.deny`: `Edit(/CLAUDE.md)` — only when `never_edit=CLAUDE.md`.
+3. On a yes, merge them into the repo's shared, committed `.claude/settings.json`
+   with this exact snippet. It creates the file from `{}` only if absent (no
+   dev-flow step writes this file today, so in many target repos it will be
+   new; this repo has none either). If the file already exists, it keeps every
+   existing key (`permissions.allow`, `env`, `enabledPlugins`, …), appends to
+   `ask`/`deny`, and dedupes:
+   ```bash
+   f=.claude/settings.json; mkdir -p .claude; [ -f "$f" ] || echo '{}' > "$f"
+   jq --argjson ask '["Edit(AGENTS.md)","Edit(CLAUDE.md)","Edit(.claude/rules/**)"]' \
+     '.permissions.ask = (((.permissions.ask // []) + $ask) | unique)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+   # only when never_edit=CLAUDE.md:
+   jq '.permissions.deny = (((.permissions.deny // []) + ["Edit(/CLAUDE.md)"]) | unique)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
    ```
-   claude plugin marketplace update dev-flow-marketplace
-   claude plugin update dev-flow@dev-flow-marketplace
-   /reload-plugins        # or start a new session
-   ```
-   then re-run `/dev-flow:init-hooks`. Note that a marketplace added from a
-   local directory or a non-Anthropic GitHub repo does not auto-update, so
-   this is a manual step. Do not try to fix the hook by editing anything.
+
+**Why:** an `ask` rule raises Claude Code's own permission prompt — showing
+the change — for every Write/Edit to those files, and it applies without
+waiting for workspace trust. These rules go in the shared, committed settings
+file on purpose, as an always-on backstop for everyone in the repo; anyone
+whose dev-flow hooks do run will get both the guard's block and this prompt
+for the same edit, and that redundancy is accepted. They do not cover Bash
+writes, and they only load in sessions started at the repo root (project
+settings have no parent-directory fallback).
+
+Committing this file changes permission behaviour for everyone who pulls the
+repo, so tell the user to review the diff before committing it. Do not commit
+it yourself.
 
 ## 1. Find the commands (read, do not guess)
 
@@ -79,9 +142,16 @@ Only create it if the per-edit checks cannot run on the host (containerised tool
 
 If the host has the tools natively, skip this file — the built-in checks already handle php/python/ts/js/json, and silently skip any tool that is not installed.
 
+In hookless mode, always write `.claude/lint-cmd` when the repo has any
+per-file check (host or container): the built-in native checks only run
+inside the hook, so without it nothing checks individual files.
+
 ## 5. Write `.claude/test-cmd-retries` — only if asked
 
 A single number: how many times the stop gate blocks and lets Claude retry before giving up loudly. Default is 3 when the file is absent. Write it only if I passed `retries=N`.
+
+In hookless mode, skip this step: there is no stop gate to retry. Say so in
+the report.
 
 ## 6. Prove they work (do not skip this)
 
@@ -93,11 +163,16 @@ A single number: how many times the stop gate blocks and lets Claude retry befor
 
 ## 7. Report
 
+- Hookless mode, if it applied: the reason (the `hooks-policy.sh` summary or
+  the user's answer), the permission rules added to the shared
+  `.claude/settings.json` (or why none were), that the three gates are now
+  enforced only by instructions, and the admin fix (managed `enabledPlugins`
+  force-enable).
 - Whether the pre-write guard blocked the probe, and the plugin version and root path it reported.
 - Each file written, with the command in it and **where you found that command**.
 - Verification results: exit codes and the timing of `test-cmd`.
 - What you deliberately excluded (integration tests, etc.).
 - Commit advice: `.claude/test-cmd` and `.claude/lint-cmd` are usually worth committing so the team shares the same gate; `.claude/test-cmd-retries` is personal.
-- Remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.approved-writes/`.
+- In hookless mode, this is replaced by: the rules were added to the shared, committed `.claude/settings.json`: review the `.claude/settings.json` diff before committing it, because it changes permission behaviour for anyone who pulls the repo. Otherwise, remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.approved-writes/`.
 
 Note: these files are plain text, so I can also just write them by hand — this command exists to derive them from what the repo already documents and to verify them.
