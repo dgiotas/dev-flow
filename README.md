@@ -11,7 +11,7 @@ Quality-gate hooks, a guard on your guidance files, bundled MCP servers and nine
 
 ## Why dev-flow
 
-Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has Sonnet implement it one task at a time, then hands the finished diff back to Opus for review. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails. It also bundles MCP servers and nine dev skills, and is built to sit alongside obra/superpowers.
+Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has Sonnet implement it one task at a time, then hands the finished diff back to Opus for review. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails; where an organization's managed settings block plugin hooks, dev-flow falls back to explicit, instruction-level checks instead (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)). It also bundles MCP servers and nine dev skills, and is built to sit alongside obra/superpowers.
 
 ## Getting Started
 
@@ -197,11 +197,11 @@ Or run the steps yourself:
 /dev-flow:init-rules php        # or java | python | node | all: copies verified rule templates into .claude/rules
 ```
 
-The pre-write guard fires on **every** run — by design at step 0's probe (that is the liveness proof), which leaves a throwaway `.claude/rules/devflow-guard-probe.md` the command cannot delete, so it hands you a one-line `rm`; and again at any later write to an `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md` that already exists. That is intended, not a bug (not yet run end to end in a live session).
+The pre-write guard fires on **every** run (where hooks run) — by design at step 0's probe (that is the liveness proof), which leaves a throwaway `.claude/rules/devflow-guard-probe.md` the command cannot delete, so it hands you a one-line `rm`; and again at any later write to an `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md` that already exists. That is intended, not a bug (not yet run end to end in a live session).
 
 ## Ways of Working
 
-Three peer paths. The hooks (guard, per-edit checks, stop gate) apply on all of them.
+Three peer paths. The hooks (guard, per-edit checks, stop gate) apply on all of them, unless your organization's managed settings block plugin hooks — see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization).
 
 | Path | What it adds |
 |---|---|
@@ -316,6 +316,30 @@ Claude Code reliably reads `CLAUDE.md`; whether it natively reads `AGENTS.md` de
 - A pass at any point clears the counter. The next failure after a give-up starts a fresh cycle at attempt 1.
 - Change the cap per repo: put a number in `.claude/test-cmd-retries`, or set `DEV_FLOW_STOP_GATE_MAX` in your shell.
 - Add `.claude/.stop-gate-state` and `.claude/stop-gate-giveup.log` to `.gitignore`.
+
+### Managed settings: hooks disabled by your organization
+
+If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's three hooks (pre-write guard, per-edit check, stop gate) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
+
+The real fix is for your admin: force-enable dev-flow in managed settings, because hooks belonging to a force-enabled plugin are exempt from `allowManagedHooksOnly`:
+
+```json
+{ "enabledPlugins": { "dev-flow@dev-flow-marketplace": [true] } }
+```
+
+If the org also sets `strictKnownMarketplaces`, the dev-flow marketplace needs to be listed there too. See [the settings reference](https://code.claude.com/docs/en/settings-reference). (Per the Claude Code docs; not verified in a managed session.)
+
+Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/dev-flow:init-hooks` detect the dead guard probe, run `scripts/hooks-policy.sh` — which reads `managed-settings.json`, `managed-settings.d/*.json` and the macOS managed-prefs plist; it is not server-managed policy, so also check `/status` → Setting sources — and continue instead of stopping (this flow has not yet been run end-to-end in a live managed-settings session; if you hit unexpected behaviour, please report it):
+
+| Hook | Hookless substitute | Strength |
+|---|---|---|
+| pre-write guard | `ask` rules in the shared, committed `.claude/settings.json` for `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)` (+ `deny Edit(/CLAUDE.md)` when it's a pointer), plus a guidance instruction | Claude Code permission prompt on every Write/Edit, for everyone in the repo (people whose hooks run get this on top of the guard); not Bash writes; ignored under `allowManagedPermissionRulesOnly` |
+| per-edit check | `.claude/lint-cmd`, always written in hookless mode, run by `implementer`, `verify-done` and the guidance "Quality gates" section | instruction-level |
+| stop gate | `.claude/test-cmd`, run by `implementer`, `verify-done`, `reviewer` and the guidance section | instruction-level; nothing blocks the end of a plain turn |
+
+Hookless mode is weaker: the model can skip an instruction, and only the admin fix above restores the mechanical gates.
+
+The `ask` rules are committed to the repo on purpose, as a shared backstop for everyone who works there — review that diff before committing it, since contributors whose hooks run will see a permission prompt in addition to the guard.
 
 ### Per-repo config files
 
@@ -471,7 +495,7 @@ claude plugin marketplace update dev-flow-marketplace
 claude plugin update dev-flow@dev-flow-marketplace
 /reload-plugins        # or start a new session
 ```
-From v1.10.0 the block message's second line names the version that fired, so a stale copy is self-reporting.
+From v1.10.0 the block message's second line names the version that fired, so a stale copy is self-reporting. If `/status` shows `Enterprise managed settings` and updating doesn't help, the cause is policy, not a stale copy — see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization).
 
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
@@ -494,6 +518,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.
 - `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
+- Hookless mode (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)) is instruction-level, not mechanical: it relies on the model following `.claude/lint-cmd`/`.claude/test-cmd` and the guidance file rather than a hook blocking the action.
 
 ## Changelog
 
