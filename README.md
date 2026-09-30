@@ -165,7 +165,7 @@ rm -rf .codegraph               # CodeGraph index
 
 If you kept a backup before first installing (`cp -r ~/.claude ~/.claude.bak-<date>`, `cp ~/.claude.json ~/.claude.json.bak-<date>`), restoring those is the fastest full reset.
 
-Verified: steps 2, 3 and 5 were run for real (dev-flow, Superpowers and claude-powerline all uninstalled and their marketplaces removed cleanly, confirmed with `claude plugin list` / `marketplace list`). Steps 4 and 6 (CodeGraph, claude-mem) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly. The `settings.json` / `claude-powerline.json` cleanup in step 5 is also unverified; check the file before and after.
+Verified: `uninstall.sh`'s default path — removing the dev-flow plugin and marketplace — was run for real against an isolated `CLAUDE_CONFIG_DIR` temp config, confirming dev-flow was installed and then fully removed, checked with `claude plugin list` / `marketplace list`. `--remove-tools` and `--remove-superpowers` were verified against the stubbed test rig (a fake `claude`), not by actually removing claude-powerline, CodeGraph or Superpowers from a real install. The manual leftover items above (1, 4, 5, 6) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly, and check the `settings.json` / `claude-powerline.json` cleanup in step 5 before and after.
 
 </details>
 
@@ -493,6 +493,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.
+- `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
 
 ## Changelog
 
@@ -508,4 +509,3 @@ Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/d
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, merge to `main`, then `claude plugin tag plugins/dev-flow --push` (creates and pushes the `dev-flow--v<version>` tag, validating the manifest) |
 
 Issues and PRs: https://github.com/dgiotas/dev-flow/issues.
-- `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
