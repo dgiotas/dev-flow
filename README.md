@@ -197,7 +197,7 @@ Or run the steps yourself:
 /dev-flow:init-rules php        # or java | python | node | all: copies verified rule templates into .claude/rules
 ```
 
-The pre-write guard fires on **every** run — by design at step 0's probe (that is the liveness proof), which leaves a throwaway `.claude/rules/devflow-guard-probe.md` the command cannot delete, so it hands you a one-line `rm`; and again at any later write to an `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md` that already exists. That is intended, not a bug (not yet run end to end in a live session).
+The pre-write guard fires on **every** run (where hooks run) — by design at step 0's probe (that is the liveness proof), which leaves a throwaway `.claude/rules/devflow-guard-probe.md` the command cannot delete, so it hands you a one-line `rm`; and again at any later write to an `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md` that already exists. That is intended, not a bug (not yet run end to end in a live session).
 
 ## Ways of Working
 
@@ -329,7 +329,7 @@ The real fix is for your admin: force-enable dev-flow in managed settings, becau
 
 If the org also sets `strictKnownMarketplaces`, the dev-flow marketplace needs to be listed there too. See [the settings reference](https://code.claude.com/docs/en/settings-reference). (Per the Claude Code docs; not verified in a managed session.)
 
-Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/dev-flow:init-hooks` detect the dead guard probe, run `scripts/hooks-policy.sh` — which reads `managed-settings.json`, `managed-settings.d/*.json` and the macOS managed-prefs plist; it is not server-managed policy, so also check `/status` → Setting sources — and continue instead of stopping:
+Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/dev-flow:init-hooks` detect the dead guard probe, run `scripts/hooks-policy.sh` — which reads `managed-settings.json`, `managed-settings.d/*.json` and the macOS managed-prefs plist; it is not server-managed policy, so also check `/status` → Setting sources — and continue instead of stopping (this flow has not yet been run end-to-end in a live managed-settings session; if you hit unexpected behaviour, please report it):
 
 | Hook | Hookless substitute | Strength |
 |---|---|---|

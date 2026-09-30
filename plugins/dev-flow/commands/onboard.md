@@ -87,7 +87,10 @@ hookless mode, tell the skill so, so that it adds its Quality gates section.
 ## Step 3 — `/dev-flow:init-hooks`
 
 Run it, passing through any `retries=N`/`force-container`/`force-host`
-argument given to this command, with its own step 0 skipped (done above).
+argument given to this command, with its own step 0 skipped (done above). In
+hookless mode, apply init-hooks' hookless branches in steps 4, 5 and 7
+(always write `.claude/lint-cmd`, skip the retries step, and report
+accordingly).
 
 ## Step 4 — `/dev-flow:init-rules <stack>` as a deduplicated top-up
 

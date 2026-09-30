@@ -19,7 +19,7 @@ copy looks identical to a working one, because every non-match is a bare
    `claude plugin list`. The last path segment of the plugin root is the
    loaded version. If it differs from the version `claude plugin list`
    reports, or is older than the marketplace's, say so and give the
-   remediation in step 3.
+   remediation in step 3(3a) (the stale-copy update steps).
 2. **Probe it end to end, side-effect-free.** Create a throwaway guarded file
    `.claude/rules/devflow-guard-probe.md` with the `Write` tool (a brand-new
    guarded file is allowed by design), then issue an `Edit` on it changing
@@ -86,9 +86,12 @@ permission rules are ignored under that policy) and write nothing. Otherwise:
    ```bash
    f=.claude/settings.json; mkdir -p .claude; [ -f "$f" ] || echo '{}' > "$f"
    jq --argjson ask '["Edit(AGENTS.md)","Edit(CLAUDE.md)","Edit(.claude/rules/**)"]' \
-     '.permissions.ask = (((.permissions.ask // []) + $ask) | unique)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+     '.permissions.ask = ((.permissions.ask // []) as $a | $a + ($ask - $a))' "$f" > "$f.tmp" \
+     && mv "$f.tmp" "$f" || rm -f "$f.tmp"
    # only when never_edit=CLAUDE.md:
-   jq '.permissions.deny = (((.permissions.deny // []) + ["Edit(/CLAUDE.md)"]) | unique)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+   jq --argjson deny '["Edit(/CLAUDE.md)"]' \
+     '.permissions.deny = ((.permissions.deny // []) as $d | $d + ($deny - $d))' "$f" > "$f.tmp" \
+     && mv "$f.tmp" "$f" || rm -f "$f.tmp"
    ```
 
 **Why:** an `ask` rule raises Claude Code's own permission prompt — showing
@@ -173,6 +176,6 @@ the report.
 - Verification results: exit codes and the timing of `test-cmd`.
 - What you deliberately excluded (integration tests, etc.).
 - Commit advice: `.claude/test-cmd` and `.claude/lint-cmd` are usually worth committing so the team shares the same gate; `.claude/test-cmd-retries` is personal.
-- In hookless mode, this is replaced by: the rules were added to the shared, committed `.claude/settings.json`: review the `.claude/settings.json` diff before committing it, because it changes permission behaviour for anyone who pulls the repo. Otherwise, remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.approved-writes/`.
+- Remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.approved-writes/` — in hookless mode, instead tell me to review the `.claude/settings.json` diff before committing it, because it changes permission behaviour for anyone who pulls the repo.
 
 Note: these files are plain text, so I can also just write them by hand — this command exists to derive them from what the repo already documents and to verify them.

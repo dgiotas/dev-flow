@@ -72,9 +72,17 @@ Common when each project pins its own runtime version. The host may have no `php
 
 Hookless mode applies when the caller says so, or when
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/hooks-policy.sh"` reports `hooks=disabled`
-or `hooks=managed-only`. In that case, procedure step 3 also adds this section
-to `<guidance file>` (through the normal diff-and-approve flow), worded so it
-is also correct where hooks do run:
+or `hooks=managed-only`. On its own, that script's output can't tell "hooks
+blocked" apart from "hooks force-enabled and exempt" — a plugin listed in
+managed `enabledPlugins` still leaves the on-disk policy looking restrictive,
+even though its own hooks run fine. That distinction comes only from a dead
+guard-probe result, which `/dev-flow:init-hooks` and `/dev-flow:onboard` check
+before calling this script. If this skill runs standalone and sees
+`hooks=managed-only`/`disabled` without a prior probe result, treat it as a
+signal to ask the user whether dev-flow's own hooks are actually running,
+rather than assuming hookless mode. When hookless mode does apply, procedure
+step 3 also adds this section to `<guidance file>` (through the normal
+diff-and-approve flow), worded so it is also correct where hooks do run:
 
 ```markdown
 ## Quality gates
