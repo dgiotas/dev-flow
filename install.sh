@@ -3,12 +3,18 @@
 # Usage: bash install.sh [marketplace-source] [--with-memory] [--with-powerline]
 #                        [--skip-superpowers] [--skip-codegraph]
 #                        [-y|--yes|--non-interactive] [--no-color] [--dry-run]
-#   marketplace-source: local path or GitHub "org/repo" (default: this folder)
+#   marketplace-source: local path or GitHub "org/repo" (default: this folder when run
+#                        from a clone, else dgiotas/dev-flow)
 #   --with-memory:      also install claude-mem for cross-session recall (opt-in)
 #   --with-powerline:   also install claude-powerline (cosmetic status line, opt-in)
+#   DEV_FLOW_VERSION=x.y.z  env var: install that tagged release (tag dev-flow--vx.y.z; available from 1.12.0)
 #   -y, --yes, --non-interactive: force non-interactive mode even on a TTY
 #   --no-color:          disable coloured output
 #   --dry-run:           show the plan, then exit 0 without installing anything
+#
+# One-liner:  curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash
+#   flags:    ... | bash -s -- --with-memory
+#   checklist: bash <(curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh)
 #
 # Design notes (learned the hard way):
 #  * Never hide output blindly. Output is captured and printed on failure.
@@ -18,6 +24,8 @@
 #    the case inside a script. Without it, the install waits for confirmation.
 #  * GIT_TERMINAL_PROMPT=0 so a private-repo clone errors instead of hanging on
 #    a credential prompt.
+# Whole script in one brace group: bash parses it fully before running anything, so a truncated curl | bash download runs nothing.
+{
 set -u
 export GIT_TERMINAL_PROMPT=0
 
@@ -26,9 +34,15 @@ usage() {
 Usage: bash install.sh [marketplace-source] [--with-memory] [--with-powerline]
                         [--skip-superpowers] [--skip-codegraph]
                         [-y|--yes|--non-interactive] [--no-color] [--dry-run]
-  marketplace-source: local path or GitHub "org/repo" (default: this folder)
+  marketplace-source: local path or GitHub "org/repo" (default: this folder when run
+                       from a clone, else dgiotas/dev-flow)
   --with-memory:      also install claude-mem for cross-session recall (opt-in)
   --with-powerline:   also install claude-powerline (cosmetic status line, opt-in)
+  DEV_FLOW_VERSION=x.y.z  env var: install that tagged release (tag dev-flow--vx.y.z; available from 1.12.0)
+
+One-liner:  curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash
+  flags:    ... | bash -s -- --with-memory
+  checklist: bash <(curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh)
 EOF
 }
 
@@ -55,7 +69,28 @@ for arg in "$@"; do
     *)                  SRC="$arg" ;;
   esac
 done
-SRC="${SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+REPO="dgiotas/dev-flow"
+here=""
+script="${BASH_SOURCE[0]:-}"
+if [ -n "$script" ] && [ -f "$(dirname "$script")/.claude-plugin/marketplace.json" ]; then
+  here="$(cd "$(dirname "$script")" && pwd)"
+fi
+if [ -n "${DEV_FLOW_VERSION:-}" ]; then
+  ver="${DEV_FLOW_VERSION#v}"
+  if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'invalid DEV_FLOW_VERSION: %s (expected x.y.z)\n' "$DEV_FLOW_VERSION" >&2
+    usage >&2
+    exit 2
+  fi
+  src="${SRC:-$REPO}"
+  if [ -d "$src" ]; then
+    printf 'DEV_FLOW_VERSION pins a GitHub tag; it can'"'"'t be combined with the local path %s. Check out tag dev-flow--v%s in your clone instead.\n' "$src" "$ver" >&2
+    exit 2
+  fi
+  SRC="$src#dev-flow--v$ver"
+else
+  SRC="${SRC:-${here:-$REPO}}"
+fi
 
 INTERACTIVE=0
 if [ "$NON_INTERACTIVE" = 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "${CI:-}" ]; then INTERACTIVE=1; fi
@@ -379,7 +414,8 @@ else
   skip "superpowers skipped (--skip-superpowers)"
 fi
 has_marketplace dev-flow-marketplace && STEP_ALREADY=1
-run_step 120 "add marketplace dev-flow ($SRC)" claude plugin marketplace add "$SRC"
+run_step 120 "add marketplace dev-flow ($SRC)" claude plugin marketplace add "$SRC" \
+  || { has_marketplace dev-flow-marketplace && { note "dev-flow-marketplace is already registered from a different source or version."; note "Run uninstall.sh first (see README > Uninstalling), then re-run this installer."; }; }
 has_plugin dev-flow@dev-flow-marketplace && STEP_ALREADY=1
 run_step 180 "install dev-flow"                claude plugin install -y dev-flow@dev-flow-marketplace
 
@@ -458,3 +494,4 @@ note "  - run 'setup-rules' (ask Claude: \"Set up AGENTS.md and rules for this r
 note "  - create .claude/test-cmd            (the stop gate does nothing without it)"
 note "  - create .claude/lint-cmd            (only if linters run in a container)"
 note "  - optional .claude/test-cmd-retries  (stop-gate retries before giving up; default 3)"
+}
