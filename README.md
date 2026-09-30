@@ -1,4 +1,4 @@
-# dev-flow: private Claude Code plugin (v1.10)
+# dev-flow: private Claude Code plugin (v1.11)
 
 A spec-then-build workflow with **model routing** (a strong model plans and reviews, a cheaper one codes), quality-gate hooks, bundled MCP servers and nine dev skills. Built to sit alongside obra/superpowers.
 
@@ -17,11 +17,19 @@ Flags: `--with-memory`, `--with-powerline`, `--skip-superpowers`, `--skip-codegr
 Restart Claude Code, then verify with `/plugin`, `/mcp`, `/agents`, `/hooks`. Then, once per repo you work in:
 
 ```text
+/dev-flow:onboard                # runs the whole per-repo sequence below in order, pausing for guard approval
+```
+
+Or run the steps yourself:
+
+```text
+/dev-flow:init-codegraph        # structure index for the codegraph MCP server (also adds .codegraph/ to .gitignore)
+"Set up AGENTS.md for this repo" # setup-rules skill (guidance file + rules + hook commands in one go)
 /dev-flow:init-hooks            # reads your AGENTS.md/Makefile/CI, writes + verifies .claude/test-cmd (and lint-cmd)
 /dev-flow:init-rules php        # or java | python | node | all: copies verified rule templates into .claude/rules
-"Set up AGENTS.md for this repo" # setup-rules skill (guidance file + rules + hook commands in one go)
-cd <repo> && codegraph init     # optional: structure index (add .codegraph/ to .gitignore)
 ```
+
+The pre-write guard fires on **every** run — by design at step 0's probe (that is the liveness proof), which leaves a throwaway `.claude/rules/devflow-guard-probe.md` the command cannot delete, so it hands you a one-line `rm`; and again at any later write to an `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md` that already exists. That is intended, not a bug (not yet run end to end in a live session).
 
 Manual install instead of the script:
 
@@ -32,7 +40,7 @@ Manual install instead of the script:
 /plugin install dev-flow@dev-flow-marketplace
 ```
 
-Required: Claude Code, `jq`, `git`. Optional: Node 18+ and `uv` (only for the Context7 / DevTools / Semble MCP servers), `npm` (CodeGraph), native language tools (see *Containerised toolchains* — you do **not** need them installed on the host). Hooks run through `bash`, so no `chmod` is needed. To try it without installing: `claude --plugin-dir ./plugins/dev-flow`.
+Required: Claude Code, `jq`, `git`. Optional: Node 18+ (needed by the Context7 and Chrome DevTools MCP servers, and by `npm` for the bundled CodeGraph MCP server) and `uv` (needed by the Semble MCP server), native language tools (see *Containerised toolchains* — you do **not** need them installed on the host). Hooks run through `bash`, so no `chmod` is needed. To try it without installing: `claude --plugin-dir ./plugins/dev-flow`.
 
 ## AGENTS.md or CLAUDE.md
 
@@ -98,6 +106,8 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Command | `/dev-flow:build <slug>` | Sonnet orchestrates and implements task by task, then verify, then Opus review. |
 | Command | `/dev-flow:init-rules <stack>` | Adapts stack rule templates into the repo's `.claude/rules`. |
 | Command | `/dev-flow:init-hooks` | Derives `.claude/test-cmd` / `lint-cmd` from your AGENTS.md, Makefile, manifests or CI, then verifies them. |
+| Command | `/dev-flow:init-codegraph` | Builds/refreshes the local CodeGraph index for this repo. |
+| Command | `/dev-flow:onboard` | Runs the whole per-repo onboarding sequence in order, pausing for guard approval. |
 | Agent | `spec-architect` (Opus) | Investigates and writes spec and plan. |
 | Agent | `implementer` (Sonnet) | Implements one plan task test-first, escalates with `BLOCKED`. |
 | Agent | `reviewer` (Opus) | Read-only diff review against spec. |
@@ -113,7 +123,20 @@ Normal when each project pins its own runtime version in Docker. Nothing here ne
 | Hook | `post-edit-check` | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | Hook | `stop-gate` | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
 | Hook | `pre-write-guard` | Gates every change (Write/Edit/MultiEdit, plus Bash commands that look like they write the file directly) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
-| MCP | context7, semble, chrome-devtools | Bundled in `.mcp.json`, start automatically. CodeGraph is set up by `install.sh`. |
+| MCP | context7, semble, chrome-devtools, codegraph | All four bundled in `.mcp.json`, start automatically. CodeGraph additionally needs its binary on PATH (`install.sh` installs it) and a per-repo `codegraph init` for results. |
+
+## MCP servers: what needs installing
+
+All four are registered the moment the plugin is installed — none of them need a separate `/plugin` step or a manual `.mcp.json` edit. Whether anything *else* is needed depends on how each one's command is wired:
+
+| Server | Extra setup? |
+|---|---|
+| `context7` | None. `npx -y @upstash/context7-mcp` fetches and runs the package itself on first use (needs Node). |
+| `chrome-devtools` | None. `npx chrome-devtools-mcp@latest` fetches and runs itself on first use (needs Node). |
+| `semble` | None. `uvx --from semble[mcp] semble` fetches and runs itself on first use (needs `uv`/`uvx`). |
+| `codegraph` | Yes. Its `.mcp.json` command (`codegraph serve --mcp`) calls the `codegraph` binary directly rather than through a fetcher like `npx`/`uvx`, so it must already be on PATH or the server won't connect. `install.sh` installs it for you (section 3, `npm install -g @colbymchenry/codegraph`, skipped with `--skip-codegraph`); otherwise run that command yourself. Per repo, also run `codegraph init` once — the server connects either way, but has nothing to query until you do. |
+
+Verify any of them with `claude mcp list`: expect `plugin:dev-flow:<name>: ... - ✔ Connected`. `✘ Failed to connect` on `codegraph` means the binary isn't on PATH; on the other three it usually means Node or `uv` is missing (see *Prerequisites* above).
 
 ## Pre-write guard: guidance files are never changed silently
 
@@ -259,7 +282,7 @@ claude plugin marketplace list
 claude mcp list
 
 # 2. The plugins (this also removes the bundled context7 / semble /
-#    chrome-devtools MCP servers, since those are plugin-scoped via .mcp.json)
+#    chrome-devtools / codegraph MCP servers, since those are plugin-scoped via .mcp.json)
 claude plugin uninstall dev-flow@dev-flow-marketplace
 claude plugin marketplace remove dev-flow-marketplace
 
@@ -267,7 +290,9 @@ claude plugin marketplace remove dev-flow-marketplace
 claude plugin uninstall superpowers@superpowers-marketplace
 claude plugin marketplace remove superpowers-marketplace
 
-# 4. CodeGraph — it registered itself in ~/.claude.json, outside the plugin.
+# 4. CodeGraph — only relevant if you installed before v1.11.0, when
+#    install.sh registered it globally in ~/.claude.json, outside the plugin.
+#    From v1.11.0 the plugin-scoped one is removed with the plugin in step 2.
 #    Confirm the exact server name from `claude mcp list` first.
 claude mcp remove codegraph
 npm uninstall -g @colbymchenry/codegraph
@@ -324,9 +349,11 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
-**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 13 (9 skills + the 4 commands), Agents 3, Hooks 3 (PreToolUse, PostToolUse, Stop), MCP servers 3.
+**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 15 (9 skills + the 6 commands), Agents 3, Hooks 3 (PreToolUse, PostToolUse, Stop), MCP servers 4.
 
-**Context cost.** `claude plugin details dev-flow` reports roughly **1,700 always-on tokens** per session for the whole plugin, with each skill's body loaded only when it fires. Worth checking yourself if you stack several plugins.
+**Context cost.** `claude plugin details dev-flow` reports roughly **1,875 always-on tokens** per session for the whole plugin, with each skill's body loaded only when it fires. Worth checking yourself if you stack several plugins.
+
+**CodeGraph tools return nothing.** The repo has no index — run `/dev-flow:init-codegraph` (or `codegraph init`). If a duplicate `codegraph` server appears alongside `plugin:dev-flow:codegraph` from a previous global install, remove it: `claude mcp remove codegraph`.
 
 ## Known limits
 
