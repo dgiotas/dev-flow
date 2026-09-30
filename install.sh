@@ -183,8 +183,9 @@ section 1 "Prerequisites"
 command -v claude >/dev/null && ok "claude CLI" || bad "claude CLI (https://docs.claude.com/en/docs/claude-code)"
 command -v jq     >/dev/null && ok "jq"         || bad "jq (needed by the hooks): brew install jq / apt install jq"
 command -v git    >/dev/null && ok "git"        || bad "git"
-command -v node   >/dev/null && ok "node $(node --version 2>/dev/null)" || warn "node 18+ not found: the Context7 and Chrome DevTools MCP servers will not start (everything else works)"
+command -v node   >/dev/null && ok "node $(node --version 2>/dev/null)" || warn "node 18+ not found: the Context7 and Chrome DevTools MCP servers will not start, and npm (needed for CodeGraph) requires it too"
 command -v uvx    >/dev/null && ok "uv/uvx"     || warn "uv not found: Semble code search will not start (https://docs.astral.sh/uv/)"
+command -v codegraph >/dev/null && ok "codegraph" || warn "codegraph not found: the bundled CodeGraph MCP server will not start (section 3 installs it, or: npm install -g @colbymchenry/codegraph)"
 command -v php    >/dev/null && ok "php"        || warn "php not found: per-edit PHP syntax check is skipped, not failed. Containerised toolchain? see .claude/lint-cmd in the README"
 command -v docker >/dev/null && ok "docker (containerised toolchains supported via .claude/lint-cmd)" || true
 command -v timeout >/dev/null || warn "no 'timeout' command (macOS: brew install coreutils); steps cannot be time-limited"
@@ -299,11 +300,7 @@ count_steps() {
   [ "$SKIP_SUPERPOWERS" = "0" ] && STEP_TOTAL=$((STEP_TOTAL + 2))
   STEP_TOTAL=$((STEP_TOTAL + 2))  # dev-flow: always
   if [ "$SKIP_CODEGRAPH" = "0" ] && command -v npm >/dev/null; then
-    if command -v codegraph >/dev/null; then
-      STEP_TOTAL=$((STEP_TOTAL + 1))
-    else
-      STEP_TOTAL=$((STEP_TOTAL + 2))
-    fi
+    command -v codegraph >/dev/null || STEP_TOTAL=$((STEP_TOTAL + 1))
   fi
   [ "$WITH_MEMORY" = "1" ] && command -v npx >/dev/null && STEP_TOTAL=$((STEP_TOTAL + 1))
   [ "$WITH_POWERLINE" = "1" ] && STEP_TOTAL=$((STEP_TOTAL + 2))
@@ -336,10 +333,8 @@ plan_block() {
     emit "  codegraph        npm install -g @colbymchenry/codegraph  ${C_DIM}[skip]${C_OFF}"
   elif command -v codegraph >/dev/null; then
     emit "  codegraph        npm install -g @colbymchenry/codegraph  ${C_WARN}[have]${C_OFF}"
-    emit "                   codegraph install   (registers an MCP server in ~/.claude.json)"
   else
     emit "  codegraph        npm install -g @colbymchenry/codegraph"
-    emit "                   codegraph install   (registers an MCP server in ~/.claude.json)"
   fi
 
   if [ "$WITH_MEMORY" = "1" ] && command -v npx >/dev/null; then
@@ -390,7 +385,7 @@ run_step 180 "install dev-flow"                claude plugin install -y dev-flow
 
 section 3 "CodeGraph (optional, structure/caller analysis)"
 if [ "$SKIP_CODEGRAPH" = "1" ]; then
-  skip "skipped (--skip-codegraph)"
+  skip "skipped (--skip-codegraph): the bundled CodeGraph MCP server will not connect until you install the binary"
 elif command -v npm >/dev/null; then
   if command -v codegraph >/dev/null; then
     have "codegraph already present"
@@ -399,11 +394,10 @@ elif command -v npm >/dev/null; then
       npm install -g @colbymchenry/codegraph
   fi
   if command -v codegraph >/dev/null; then
-    run_step 120 "wire codegraph into Claude Code" codegraph install
-    note "per repo, once:  cd <repo> && codegraph init   (add .codegraph/ to .gitignore)"
+    note "per repo, once:  /dev-flow:onboard   (or manually: cd <repo> && codegraph init, add .codegraph/ to .gitignore)"
   fi
 else
-  warn "npm not found; skipping CodeGraph"
+  warn "npm not found; skipping CodeGraph: the bundled CodeGraph MCP server will not connect until you install the binary"
 fi
 
 section 4 "Persistent memory (optional, off by default)"

@@ -18,7 +18,7 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 - `.claude-plugin/marketplace.json` — marketplace manifest, lists the one plugin at `./plugins/dev-flow`.
 - `plugins/dev-flow/.claude-plugin/plugin.json` — plugin manifest; `version` here is what `/plugin update` picks up.
 - `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`); frontmatter `model:` pins the model per stage.
-- `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`); same `model:` frontmatter.
+- `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`); same `model:` frontmatter.
 - `plugins/dev-flow/skills/*/SKILL.md` — the nine dev skills; each is one directory with one `SKILL.md`.
 - `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check) and `Stop` (stop-gate) to scripts in `hooks/scripts/`.
 - `plugins/dev-flow/hooks/scripts/*.sh` — the three hooks, pure bash + jq.
