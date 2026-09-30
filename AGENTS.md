@@ -9,7 +9,7 @@ A private Claude Code plugin marketplace repo: one plugin (`dev-flow`) providing
 | Validate the repo (JSON + shell syntax) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
-| Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push; colleagues run `claude plugin marketplace update` then `/plugin update`, then `/reload-plugins` or a new session |
+| Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push, then `claude plugin tag plugins/dev-flow --push` on main; colleagues run `claude plugin marketplace update` then `/plugin update`, then `/reload-plugins` or a new session |
 
 No package manager, no build step, no CI config in this repo (verified: no `.github/`, no `package.json`). `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo — is the closest thing to a test suite here.
 
@@ -24,7 +24,8 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 - `plugins/dev-flow/hooks/scripts/*.sh` — the three hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
-- `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`.
+- `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`; defaults to the dgiotas/dev-flow GitHub source when piped (curl | bash); DEV_FLOW_VERSION pins a dev-flow--v<ver> tag.
+- `uninstall.sh` — removes dev-flow (opt-in `--remove-tools` / `--remove-superpowers`); `curl | bash`-safe like `install.sh`.
 
 ## Conventions
 
