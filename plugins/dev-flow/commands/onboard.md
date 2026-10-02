@@ -120,6 +120,6 @@ One line per step: done / skipped + why / blocked-then-approved / abandoned.
 State hookless mode and its reason if it applied. List the files written,
 then repeat the follow-ups `init-hooks.md` already prescribes at its own end:
 commit advice for `.claude/test-cmd` and `.claude/lint-cmd`, plus a gitignore
-reminder for `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json` and
-`.claude/.approved-writes/` — in hookless mode this is replaced by review the
+reminder for `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json`,
+`.claude/.approved-writes/`, `.claude/plans/` and `.claude/specs/` — in hookless mode this is replaced by review the
 `.claude/settings.json` diff before committing it.

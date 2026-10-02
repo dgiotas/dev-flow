@@ -16,7 +16,7 @@ restore() (
   jq -e '.schema_version == "1" and (.plan.file | type) == "string" and ((now - (.saved_at | fromdateiso8601)) < 86400)' "$f" >/dev/null || exit 0
 
   ctx=$(jq -r '
-    [ "dev-flow state saved before the last context compaction at \(.saved_at); docs/plans is the source of truth.",
+    [ "dev-flow state saved before the last context compaction at \(.saved_at); .claude/plans is the source of truth.",
       "Active plan: \(.plan.file) (slug \(.plan.slug)); "
         + (if .plan.total == null then "checklist progress not countable."
            else "\(.plan.done) of \(.plan.total) checklist items checked." end),

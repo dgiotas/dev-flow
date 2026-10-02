@@ -7,7 +7,7 @@
 # No file contents, prompts, payload text or absolute paths.
 #
 # Never blocks: always exits 0 and prints nothing. It does not read the payload,
-# and writes nothing without jq or without a plan in docs/plans/.
+# and writes nothing without jq or without a plan in .claude/plans/.
 set -u
 input=$(cat) # consumed for API compliance; not otherwise used
 
@@ -15,7 +15,7 @@ snapshot() (
   command -v jq >/dev/null 2>&1 || exit 0
   cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
-  plan=$(ls -t docs/plans/*.md 2>/dev/null | head -1)
+  plan=$(ls -t .claude/plans/*.md 2>/dev/null | head -1)
   [ -n "$plan" ] && [ -f "$plan" ] || exit 0
   slug=$(basename "$plan" .md)
 
@@ -39,8 +39,9 @@ snapshot() (
 
   state=null
   if [ -f .claude/.stop-gate-state ]; then
-    n=$(tr -dc '0-9' < .claude/.stop-gate-state)
-    [ -n "$n" ] && state="$n"
+    read -r n _ < .claude/.stop-gate-state
+    n=$(printf '%s' "${n:-}" | tr -dc '0-9')
+    [ -n "$n" ] && [ "$n" -gt 0 ] && state="$n"
   fi
   giveup=""
   [ -f .claude/stop-gate-giveup.log ] && giveup=$(date -u -r .claude/stop-gate-giveup.log +%Y-%m-%dT%H:%M:%SZ)

@@ -1,10 +1,10 @@
 ---
 description: Implement an approved plan task by task with cheaper Sonnet subagents, then review with Opus and verify.
-argument-hint: <slug of the plan in docs/plans>
+argument-hint: <slug of the plan in .claude/plans>
 model: sonnet
 ---
 
-Implement the approved plan `docs/plans/$ARGUMENTS.md` (spec: `docs/specs/$ARGUMENTS.md`).
+Implement the approved plan `.claude/plans/$ARGUMENTS.md` (spec: `.claude/specs/$ARGUMENTS.md`).
 
 You are the orchestrator, running on the cheaper model. Keep your own context small: delegate the coding.
 

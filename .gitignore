@@ -3,3 +3,5 @@
 .claude/stop-gate-giveup.log
 .codegraph/
 .claude/.devflow-state.json
+.claude/plans/
+.claude/specs/

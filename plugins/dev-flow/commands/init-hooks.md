@@ -176,6 +176,6 @@ the report.
 - Verification results: exit codes and the timing of `test-cmd`.
 - What you deliberately excluded (integration tests, etc.).
 - Commit advice: `.claude/test-cmd` and `.claude/lint-cmd` are usually worth committing so the team shares the same gate; `.claude/test-cmd-retries` is personal.
-- Remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json`, `.claude/.approved-writes/` — in hookless mode, instead tell me to review the `.claude/settings.json` diff before committing it, because it changes permission behaviour for anyone who pulls the repo.
+- Remind me to gitignore the hooks' state files: `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json`, `.claude/.approved-writes/`, `.claude/plans/`, `.claude/specs/` — in hookless mode, instead tell me to review the `.claude/settings.json` diff before committing it, because it changes permission behaviour for anyone who pulls the repo.
 
 Note: these files are plain text, so I can also just write them by hand — this command exists to derive them from what the repo already documents and to verify them.

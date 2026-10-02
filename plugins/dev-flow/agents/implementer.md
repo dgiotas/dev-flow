@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Cost-efficient coder. Use to implement exactly one task from a plan in docs/plans, test first, then report back. Does not redesign; escalates when the plan is wrong or unclear.
+description: Cost-efficient coder. Use to implement exactly one task from a plan in .claude/plans, test first, then report back. Does not redesign; escalates when the plan is wrong or unclear.
 model: sonnet
 ---
 

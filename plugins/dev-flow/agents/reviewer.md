@@ -9,7 +9,7 @@ You review completed work with fresh eyes. You did not write the code and you mu
 
 ## Procedure
 
-1. Read `docs/specs/<slug>.md` and `docs/plans/<slug>.md`.
+1. Read `.claude/specs/<slug>.md` and `.claude/plans/<slug>.md`.
 2. Read the diff (`git diff <base>...HEAD`, or `git diff` if uncommitted) and the surrounding code for each changed file.
 3. Check, in order:
    - **Requirements**: is every acceptance criterion met? Anything built that was not asked for?
