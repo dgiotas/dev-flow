@@ -20,8 +20,8 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 - `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`); frontmatter `model:` pins the model per stage.
 - `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`); same `model:` frontmatter.
 - `plugins/dev-flow/skills/*/SKILL.md` — the nine dev skills; each is one directory with one `SKILL.md`.
-- `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check) and `Stop` (stop-gate) to scripts in `hooks/scripts/`.
-- `plugins/dev-flow/hooks/scripts/*.sh` — the three hooks, pure bash + jq.
+- `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check), `Stop` (stop-gate), `PreCompact` (pre-compact-snapshot) and `SessionStart` (session-start-restore) to scripts in `hooks/scripts/`.
+- `plugins/dev-flow/hooks/scripts/*.sh` — the five hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
 - `plugins/dev-flow/scripts/hooks-policy.sh` — reports whether on-disk managed settings block hooks (`allowManagedHooksOnly`/`disableAllHooks`) or project permission rules; used by `init-hooks`/`onboard` step 0 to enter hookless mode after a dead guard probe.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
@@ -42,5 +42,5 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 
 - No CI: nothing runs automatically on push. `.claude/test-cmd` only runs inside a Claude Code session, via the stop-gate hook.
 - Bumping `plugins/dev-flow/.claude-plugin/plugin.json` `version` is the release mechanism — forgetting it means colleagues' `/plugin update` sees no change. Non-Anthropic marketplaces (a local directory, or a non-Anthropic GitHub repo) don't auto-update, so an unbumped or un-updated plugin means colleagues keep running the copy they installed on day one, and its hooks silently behave like the old version.
-- If this repo ever runs the plugin's own hooks against itself, `pre-write-guard.sh`'s approval markers live under `.claude/.approved-writes/`, and the stop gate writes `.claude/.stop-gate-state` / `.claude/stop-gate-giveup.log` — keep those gitignored, they're local run state, not content to commit.
+- If this repo ever runs the plugin's own hooks against itself, `pre-write-guard.sh`'s approval markers live under `.claude/.approved-writes/`, and the stop gate writes `.claude/.stop-gate-state` / `.claude/stop-gate-giveup.log`, and the compaction snapshot writes `.claude/.devflow-state.json` — keep those gitignored, they're local run state, not content to commit.
 - `README.md` marks several claims "not yet verified" / "unverified here" (e.g. whether command `model:` frontmatter actually pins the model live, hooks firing inside a real session). Don't restate those as settled fact.
