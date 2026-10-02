@@ -155,7 +155,7 @@ Then check `~/.claude/settings.json` for any leftover `hooks` entries mentioning
 
 ```bash
 rm -f  .claude/test-cmd .claude/test-cmd-retries .claude/lint-cmd
-rm -rf .claude/.approved-writes .claude/.stop-gate-state .claude/stop-gate-giveup.log
+rm -rf .claude/.approved-writes .claude/.stop-gate-state .claude/stop-gate-giveup.log .claude/.devflow-state.json
 rm -rf .claude/rules            # only if these were generated and you don't want them
 rm -rf .codegraph               # CodeGraph index
 # docs/specs and docs/plans are your own work product — keep them
@@ -201,7 +201,7 @@ The pre-write guard fires on **every** run (where hooks run) — by design at st
 
 ## Ways of Working
 
-Three peer paths. The hooks (guard, per-edit checks, stop gate) apply on all of them, unless your organization's managed settings block plugin hooks — see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization).
+Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snapshot) apply on all of them, unless your organization's managed settings block plugin hooks — see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization).
 
 | Path | What it adds |
 |---|---|
@@ -248,6 +248,8 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `post-edit-check` | Hook | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | `stop-gate` | Hook | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
 | `pre-write-guard` | Hook | Gates every change (Write/Edit/MultiEdit, plus Bash commands that look like they write the file directly) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
+| `pre-compact-snapshot` | Hook | Before compaction, saves the active plan, checklist counts, git branch/counts and BLOCKED lines to `.claude/.devflow-state.json` — no file contents (see below). |
+| `session-start-restore` | Hook | At session start, injects that snapshot (≤15 lines) if it is under 24 h old. |
 | context7, semble, chrome-devtools, codegraph | MCP | All four bundled in `.mcp.json`, start automatically. CodeGraph additionally needs its binary on PATH (`install.sh` installs it) and a per-repo `codegraph init` for results. |
 
 ## Documentation
@@ -317,9 +319,47 @@ Claude Code reliably reads `CLAUDE.md`; whether it natively reads `AGENTS.md` de
 - Change the cap per repo: put a number in `.claude/test-cmd-retries`, or set `DEV_FLOW_STOP_GATE_MAX` in your shell.
 - Add `.claude/.stop-gate-state` and `.claude/stop-gate-giveup.log` to `.gitignore`.
 
+### Compaction snapshot
+
+Before compaction (`PreCompact`, manual or auto), `pre-compact-snapshot` writes `.claude/.devflow-state.json`. On `SessionStart` (`startup|resume|compact`), `session-start-restore` injects a summary of at most 15 lines into the session if that file is under 24 hours old. Neither hook can block anything: failures are silent and both exit 0.
+
+Captured:
+
+- the schema version and `saved_at`,
+- the most recently modified `docs/plans/*.md` (repo-relative path and slug) and its `- [ ]` / `- [x]` checklist counts, which are `null` if it has none,
+- the git branch, short HEAD, and **counts** of staged, unstaged and untracked files,
+- the stop-gate attempt counter and `giveup_logged_at`, the give-up log's modification time (the stop gate records no session id, so "gave up in this session" can't be told reliably),
+- up to 10 plan lines containing `BLOCKED`, with absolute paths replaced by `<path>` on a best-effort basis and each cut to 200 characters.
+
+Not captured, deliberately: file contents or diffs, file names (only counts), source code, conversation or prompt text, the hook payload (`session_id`, `transcript_path`, `cwd`, `custom_instructions`), absolute paths outside BLOCKED lines, and anything outside `docs/plans/`, git metadata and the two stop-gate files. The snapshot stores no code, diffs, file names, prompts or payload text; the only free text is the BLOCKED lines.
+
+The injected text looks like this:
+
+```text
+dev-flow state saved before the last context compaction at 2026-10-02T09:14:03Z; docs/plans is the source of truth.
+Active plan: docs/plans/test-feature.md (slug test-feature); 2 of 4 checklist items checked.
+Git: branch feature/test-feature at 1a2b3c4; 1 staged, 1 unstaged, 1 untracked files.
+Stop gate: 2 failed attempt(s) recorded; give-up log last written at 2026-10-02T08:50:41Z.
+Blocked lines in the plan:
+- BLOCKED: something
+```
+
+Caveats:
+
+- dev-flow's own plans mark tasks with `## Task N` headings, and only their acceptance criteria are checkboxes, which `/dev-flow:build` doesn't tick, so the counts show acceptance items.
+- The `implementer` reports `BLOCKED` in chat rather than writing it into the plan, so blocked lines appear only if someone records them there.
+- BLOCKED lines are copied verbatim apart from that best-effort path rewrite: paths after `[ { < , ; |`, `~/`, `$HOME`, Windows drive paths and paths glued to a word survive, so do not put secrets, card data or sensitive paths in BLOCKED lines.
+- "Most recently modified" can pick a newer plan than the one being built. The injected text names the file, and the plan stays the source of truth.
+- `jq` is required; without it nothing is written or injected.
+- In [hookless mode](#managed-settings-hooks-disabled-by-your-organization) neither hook runs, so the feature is simply absent.
+
+Add `.claude/.devflow-state.json` to `.gitignore`. It is local state; an un-ignored copy also counts as an untracked change, which makes the stop gate run on otherwise read-only turns.
+
+Verified by running both scripts against a throwaway repo (see `docs/plans/compaction-snapshot.md`); not yet observed in a live compaction.
+
 ### Managed settings: hooks disabled by your organization
 
-If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's three hooks (pre-write guard, per-edit check, stop gate) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
+If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's hooks (pre-write guard, per-edit check, stop gate, compaction snapshot) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
 
 The real fix is for your admin: force-enable dev-flow in managed settings, because hooks belonging to a force-enabled plugin are exempt from `allowManagedHooksOnly`:
 
@@ -336,6 +376,7 @@ Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/d
 | pre-write guard | `ask` rules in the shared, committed `.claude/settings.json` for `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)` (+ `deny Edit(/CLAUDE.md)` when it's a pointer), plus a guidance instruction | Claude Code permission prompt on every Write/Edit, for everyone in the repo (people whose hooks run get this on top of the guard); not Bash writes; ignored under `allowManagedPermissionRulesOnly` |
 | per-edit check | `.claude/lint-cmd`, always written in hookless mode, run by `implementer`, `verify-done` and the guidance "Quality gates" section | instruction-level |
 | stop gate | `.claude/test-cmd`, run by `implementer`, `verify-done`, `reviewer` and the guidance section | instruction-level; nothing blocks the end of a plain turn |
+| compaction snapshot | none — compaction is triggered by the harness, so there is nothing for an instruction to hook into; the plan in `docs/plans/` remains the record | not available |
 
 Hookless mode is weaker: the model can skip an instruction, and only the admin fix above restores the mechanical gates.
 
@@ -381,7 +422,7 @@ printf '<?php bad syntax ' > tmp-check.php
 bash .claude/lint-cmd tmp-check.php; echo "expect non-zero -> $?"; rm tmp-check.php
 ```
 
-Keep `test-cmd` fast (ideally under ~60s): unit tests, lint and type checks — not integration or e2e suites. Add `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log` and `.claude/.approved-writes/` to `.gitignore`.
+Keep `test-cmd` fast (ideally under ~60s): unit tests, lint and type checks — not integration or e2e suites. Add `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json` and `.claude/.approved-writes/` to `.gitignore`.
 
 ### Containerised toolchains
 
@@ -499,7 +540,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
-**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 15 (9 skills + the 6 commands), Agents 3, Hooks 3 (PreToolUse, PostToolUse, Stop), MCP servers 4.
+**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 15 (9 skills + the 6 commands), Agents 3, Hooks 5 (PreToolUse, PostToolUse, Stop, PreCompact, SessionStart), MCP servers 4.
 
 **Context cost.** `claude plugin details dev-flow` reports roughly **1,875 always-on tokens** per session for the whole plugin, with each skill's body loaded only when it fires. Worth checking yourself if you stack several plugins.
 
@@ -514,6 +555,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
 - The `ALLOW-CLAUDE-MD-EDIT` override is a guardrail, not a security boundary: the hook cannot tell who created the file, it only checks that it exists. The skill is instructed not to create it.
 - `Write`/`Edit` are gated mechanically; the `Bash` bypass is now closed for the common shapes (heredoc, `>`/`>>`, `tee`, `sed -i`/`perl -i`, `cp`, `mv`, `install`, `rm`/`unlink`/`shred`, `dd`, `truncate`, `git restore`/`git checkout -- `, `python -c`). This is command-text matching, a guardrail, not a boundary — obfuscated command text (a variable, a script file, base64), `node -e`/`ruby -e` one-liners that write files, and a directory-target `cp`/`mv` (e.g. `cp x.md .claude/rules/` without naming the destination file, so the guard never sees a `.md` filename to match) all still get through. The guard overall remains a guardrail against model error, not a security boundary.
+- The compaction snapshot is verified by running its scripts directly, not yet inside a live compaction; see [Compaction snapshot](#compaction-snapshot) for what it does not capture.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.

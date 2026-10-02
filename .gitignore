@@ -2,3 +2,4 @@
 .claude/.stop-gate-state
 .claude/stop-gate-giveup.log
 .codegraph/
+.claude/.devflow-state.json
