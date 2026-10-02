@@ -158,7 +158,7 @@ rm -f  .claude/test-cmd .claude/test-cmd-retries .claude/lint-cmd
 rm -rf .claude/.approved-writes .claude/.stop-gate-state .claude/stop-gate-giveup.log .claude/.devflow-state.json
 rm -rf .claude/rules            # only if these were generated and you don't want them
 rm -rf .codegraph               # CodeGraph index
-# docs/specs and docs/plans are your own work product — keep them
+# .claude/specs and .claude/plans are local work product (add them to .gitignore) — keep them
 ```
 
 `AGENTS.md` / `CLAUDE.md` edits are in git, so revert those with `git diff` / `git checkout --` as normal.
@@ -211,7 +211,7 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 ```text
 /dev-flow:spec add rate limiting to the ticket search API
-   -> review and edit docs/plans/<slug>.md, answer the open questions
+   -> review and edit .claude/plans/<slug>.md, answer the open questions
    -> reply "ok build", or run /dev-flow:build <slug> yourself
 ```
 
@@ -219,10 +219,14 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 | Command | Use it when | What it does |
 |---|---|---|
-| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, writes `docs/specs/<slug>.md` + `docs/plans/<slug>.md` with test-first tasks and open questions. No code. |
+| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, writes `.claude/specs/<slug>.md` + `.claude/plans/<slug>.md` with test-first tasks and open questions. No code. |
 | `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on Sonnet `implementer`, review on Opus `reviewer`. |
 | `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet runs tasks via `implementer` on a branch, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
 | `/dev-flow:onboard` | first time in a repo | CodeGraph index, then guidance file + rules, then verified hook commands, pausing at every guarded write. |
+
+Plans and specs live in `.claude/specs/` and `.claude/plans/` (previously under `docs/`); they are local work product, not committed, so add both to your repo's `.gitignore` (otherwise they show as untracked changes and make the stop gate run tests on Q&A turns).
+
+After upgrading to 1.15.0, move your existing `plans` and `specs` folders from `docs/` into `.claude/` so build and the compaction snapshot find them.
 
 Model pinning per stage is documented in frontmatter but not verified live — see Model routing.
 
@@ -313,11 +317,24 @@ Claude Code reliably reads `CLAUDE.md`; whether it natively reads `AGENTS.md` de
 
 `stop-gate` blocks Claude from finishing while `.claude/test-cmd` fails, up to a cap, then gives up loudly instead of blocking forever:
 
-- Each failure increments a counter in `.claude/.stop-gate-state` and is reported back to Claude as `attempt N/max`.
-- After the cap (default **3**) it stops blocking, but writes a hard-to-miss `Quality gate: giving up...` banner to `.claude/stop-gate-giveup.log` and tells Claude to report the failure to you instead of finishing quietly.
+- Each failure increments a counter in `.claude/.stop-gate-state` and is reported back to Claude as `attempt N/max (harness cap H)`, with the number of consecutive stop-hook continuations so far.
+- After the cap (default **3**) it stops blocking, appends a `Quality gate: giving up...` banner to `.claude/stop-gate-giveup.log`, and emits a one-line `systemMessage` warning (`Quality gate gave up: … Work is NOT verified.`), which per the Claude Code hooks docs is shown to you. The full banner is only in the log: per those docs a hook's stderr on exit 0 is not shown, so Claude itself should never see it.
 - A pass at any point clears the counter. The next failure after a give-up starts a fresh cycle at attempt 1.
 - Change the cap per repo: put a number in `.claude/test-cmd-retries`, or set `DEV_FLOW_STOP_GATE_MAX` in your shell.
 - Add `.claude/.stop-gate-state` and `.claude/stop-gate-giveup.log` to `.gitignore`.
+
+#### Claude Code's own stop-hook cap
+
+Claude Code documents a separate cap ([Stop input](https://code.claude.com/docs/en/hooks#stop-input)). After Stop hooks have continued a turn 8 times in a row, it overrides the next block and ends the turn with a warning of its own. `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` changes the cap, and `0` turns it off. The count is shared by every Stop hook (other plugins, your settings hooks, `/goal`), not kept per hook.
+
+- The gate counts consecutive continuations from the payload's `stop_hook_active` and stores the count next to the failure counter (`<failures> <continuations>`).
+- Its retry cap stays below the harness cap: a configured value at or above it is reduced to cap − 1, and the first block message says so.
+- If one more block would reach the harness cap, because other Stop hooks have already kept the turn going, it gives up with the banner instead of blocking.
+- It reads `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` from its own environment and assumes 8 when the variable is unset or not a number.
+
+When dev-flow is the only Stop hook and both caps are at their defaults (3 and 8), the cap logic never triggers (the message text and state-file format do change): the gate gives up long before the harness cap. It matters when other Stop hooks block in the same session, or when you set the retry cap at or above the harness cap.
+
+The cap's behaviour is taken from the Claude Code docs and tested by running the script directly, not yet observed in a live session. The same goes for what is shown on give-up (the `systemMessage`, and stderr on exit 0 not being shown).
 
 ### Compaction snapshot
 
@@ -326,18 +343,18 @@ Before compaction (`PreCompact`, manual or auto), `pre-compact-snapshot` writes 
 Captured:
 
 - the schema version and `saved_at`,
-- the most recently modified `docs/plans/*.md` (repo-relative path and slug) and its `- [ ]` / `- [x]` checklist counts, which are `null` if it has none,
+- the most recently modified `.claude/plans/*.md` (repo-relative path and slug) and its `- [ ]` / `- [x]` checklist counts, which are `null` if it has none,
 - the git branch, short HEAD, and **counts** of staged, unstaged and untracked files,
 - the stop-gate attempt counter and `giveup_logged_at`, the give-up log's modification time (the stop gate records no session id, so "gave up in this session" can't be told reliably),
 - up to 10 plan lines containing `BLOCKED`, with absolute paths replaced by `<path>` on a best-effort basis and each cut to 200 characters.
 
-Not captured, deliberately: file contents or diffs, file names (only counts), source code, conversation or prompt text, the hook payload (`session_id`, `transcript_path`, `cwd`, `custom_instructions`), absolute paths outside BLOCKED lines, and anything outside `docs/plans/`, git metadata and the two stop-gate files. The snapshot stores no code, diffs, file names, prompts or payload text; the only free text is the BLOCKED lines.
+Not captured, deliberately: file contents or diffs, file names (only counts), source code, conversation or prompt text, the hook payload (`session_id`, `transcript_path`, `cwd`, `custom_instructions`), absolute paths outside BLOCKED lines, and anything outside `.claude/plans/`, git metadata and the two stop-gate files. The snapshot stores no code, diffs, file names, prompts or payload text; the only free text is the BLOCKED lines.
 
 The injected text looks like this:
 
 ```text
-dev-flow state saved before the last context compaction at 2026-10-02T09:14:03Z; docs/plans is the source of truth.
-Active plan: docs/plans/test-feature.md (slug test-feature); 2 of 4 checklist items checked.
+dev-flow state saved before the last context compaction at 2026-10-02T09:14:03Z; .claude/plans is the source of truth.
+Active plan: .claude/plans/test-feature.md (slug test-feature); 2 of 4 checklist items checked.
 Git: branch feature/test-feature at 1a2b3c4; 1 staged, 1 unstaged, 1 untracked files.
 Stop gate: 2 failed attempt(s) recorded; give-up log last written at 2026-10-02T08:50:41Z.
 Blocked lines in the plan:
@@ -353,9 +370,9 @@ Caveats:
 - `jq` is required; without it nothing is written or injected.
 - In [hookless mode](#managed-settings-hooks-disabled-by-your-organization) neither hook runs, so the feature is simply absent.
 
-Add `.claude/.devflow-state.json` to `.gitignore`. It is local state; an un-ignored copy also counts as an untracked change, which makes the stop gate run on otherwise read-only turns.
+Add `.claude/.devflow-state.json` to `.gitignore`. It is local state and should not be committed; the stop gate does not count it as an untracked change.
 
-Verified by running both scripts against a throwaway repo (see `docs/plans/compaction-snapshot.md`); not yet observed in a live compaction.
+Verified by running both scripts against a throwaway repo; not yet observed in a live compaction.
 
 ### Managed settings: hooks disabled by your organization
 
@@ -376,7 +393,7 @@ Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/d
 | pre-write guard | `ask` rules in the shared, committed `.claude/settings.json` for `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)` (+ `deny Edit(/CLAUDE.md)` when it's a pointer), plus a guidance instruction | Claude Code permission prompt on every Write/Edit, for everyone in the repo (people whose hooks run get this on top of the guard); not Bash writes; ignored under `allowManagedPermissionRulesOnly` |
 | per-edit check | `.claude/lint-cmd`, always written in hookless mode, run by `implementer`, `verify-done` and the guidance "Quality gates" section | instruction-level |
 | stop gate | `.claude/test-cmd`, run by `implementer`, `verify-done`, `reviewer` and the guidance section | instruction-level; nothing blocks the end of a plain turn |
-| compaction snapshot | none — compaction is triggered by the harness, so there is nothing for an instruction to hook into; the plan in `docs/plans/` remains the record | not available |
+| compaction snapshot | none — compaction is triggered by the harness, so there is nothing for an instruction to hook into; the plan in `.claude/plans/` remains the record | not available |
 
 Hookless mode is weaker: the model can skip an instruction, and only the admin fix above restores the mechanical gates.
 
@@ -390,7 +407,7 @@ None are created by installing; they are per repo, and everything works without 
 |---|---|---|---|
 | `.claude/test-cmd` | shell script body, run as `bash .claude/test-cmd` from the repo root; exit 0 = pass | The stop gate. Runs before Claude may finish any turn that changed files. | Yes — shared team gate |
 | `.claude/lint-cmd` | shell script body; receives the **repo-relative path of the edited file as `$1`** | Per-edit check. Replaces the built-in native checks — only needed for containerised or custom toolchains. | Yes |
-| `.claude/test-cmd-retries` | a single number, e.g. `3` | How many times the stop gate blocks before giving up loudly. Default 3 when absent. | Personal preference |
+| `.claude/test-cmd-retries` | a single number, e.g. `3` | How many times the stop gate blocks before giving up loudly. Default 3 when absent; reduced to stay below the harness cap (see [Stop gate](#stop-gate)). | Personal preference |
 
 No shebang and no `chmod` needed — both are invoked through `bash`.
 
@@ -422,7 +439,7 @@ printf '<?php bad syntax ' > tmp-check.php
 bash .claude/lint-cmd tmp-check.php; echo "expect non-zero -> $?"; rm tmp-check.php
 ```
 
-Keep `test-cmd` fast (ideally under ~60s): unit tests, lint and type checks — not integration or e2e suites. Add `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json` and `.claude/.approved-writes/` to `.gitignore`.
+Keep `test-cmd` fast (ideally under ~60s): unit tests, lint and type checks — not integration or e2e suites. Add `.claude/.stop-gate-state`, `.claude/stop-gate-giveup.log`, `.claude/.devflow-state.json`, `.claude/.approved-writes/`, `.claude/plans/` and `.claude/specs/` to `.gitignore`.
 
 ### Containerised toolchains
 
@@ -482,7 +499,7 @@ Also: `spec-architect`, `implementer` and `reviewer` are subagents, and a subage
 
 ### Memory (optional)
 
-Nothing is installed by default; `CLAUDE.md`, `.claude/rules`, and the specs/plans in `docs/` are the durable, reviewed record and need no extra tool. For personal cross-session recall, `bash install.sh --with-memory` (or `… | bash -s -- --with-memory` for the one-liner) installs [claude-mem](https://github.com/thedotmack/claude-mem). Before using it on anything sensitive:
+Nothing is installed by default; `CLAUDE.md` and `.claude/rules` are the durable, reviewed record and need no extra tool; plans and specs are local working notes. For personal cross-session recall, `bash install.sh --with-memory` (or `… | bash -s -- --with-memory` for the one-liner) installs [claude-mem](https://github.com/thedotmack/claude-mem). Before using it on anything sensitive:
 - Open its config and select the **local/offline** provider — recent versions can default some integrations to a hosted service.
 - It captures tool output via hooks, so review what it stores before pointing it at the PCI-adjacent app or anything with secrets.
 - It records whatever Claude concluded, not just what you confirmed, so treat its recall as a lead to verify, not a fact — put anything that must be trusted into `CLAUDE.md` instead.
@@ -550,7 +567,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 - Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn, and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
 - CodeGraph and Semble build indexes on first use and can be slow on large repos.
-- The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism above is new and tested standalone (not yet inside a live Claude Code stop-hook cycle).
+- The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism and its interaction with Claude Code's stop-hook block cap are tested standalone (not yet inside a live Claude Code stop-hook cycle).
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
 - The `ALLOW-CLAUDE-MD-EDIT` override is a guardrail, not a security boundary: the hook cannot tell who created the file, it only checks that it exists. The skill is instructed not to create it.
@@ -564,7 +581,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 ## Changelog
 
-Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/dev-flow/tags. Per-change detail is in the commit history and `docs/specs/`.
+Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/dev-flow/tags. Per-change detail is in the commit history.
 
 ## Contributing
 
