@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: threat-unverified
+description: Ownership is enforced only by an unresolvable middleware package; the finding must be marked unverified.
+tags: [threat-model]
+context:
+  scaffold_script: fixture.sh

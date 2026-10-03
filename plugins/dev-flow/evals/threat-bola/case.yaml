@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: threat-bola
+description: Synthetic Express app with a booking lookup that has no ownership check (API1).
+tags: [threat-model]
+context:
+  scaffold_script: fixture.sh
