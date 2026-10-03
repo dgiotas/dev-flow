@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Review code or a diff for security problems: authentication and sessions, authorization, injection, secrets, sensitive data and payment-card handling, input validation, dependency risk, and unsafe defaults. Use when the user asks for a security review or audit, touches auth, JWT, sessions, payments, PCI-related code, file uploads, user input, crypto or external calls, or asks "is this safe" or "any vulnerabilities". Report-only unless told to fix.
+description: 'Review code or a diff for security problems: authentication and sessions, authorization, injection, secrets, sensitive data and payment-card handling, input validation, dependency risk, and unsafe defaults. Use when the user asks for a security review or audit, touches auth, JWT, sessions, payments, PCI-related code, file uploads, user input, crypto or external calls, or asks "is this safe" or "any vulnerabilities". Report-only unless told to fix.'
 ---
 
 # Security review

@@ -32,6 +32,7 @@ No package manager, no build step, no CI config in this repo (verified: no `.git
 
 - Hook scripts follow a strict stdin-JSON-in / exit-code-out contract — see `.claude/rules/hook-scripts.md` before touching `hooks/scripts/*.sh`.
 - Skill `description` frontmatter drives auto-invocation, not just documentation — see `.claude/rules/skills.md` before touching `skills/*/SKILL.md`.
+- Frontmatter in every `skills/*/SKILL.md`, `commands/*.md` and `agents/*.md` must be valid YAML, or GitHub and markdown viewers fail to render it. Single-quote a `description` that contains `: ` and an `argument-hint` that starts with `[...]` (`<...>` hints are fine). `bash .claude/test-cmd` parses every `.md` frontmatter and catches this.
 - Agent/command frontmatter `model:` (`opus`/`sonnet`/`haiku`/a model id/`inherit`) pins the model for that stage regardless of what model is running the parent session — this is the mechanism behind the Opus-plans/Sonnet-builds routing described in the README.
 - `AGENTS.md`, `CLAUDE.md` and `.claude/rules/*.md` are gated by `pre-write-guard.sh`: any `Write`/`Edit`/`MultiEdit` to an *existing* one of these is blocked until the user approves the exact diff and a single-use marker is created. This applies here too.
 - `CLAUDE.md` in this repo is a symlink to `AGENTS.md` — never edit `CLAUDE.md` directly; the guard refuses it outright with no approve-and-retry path. Edit `AGENTS.md`.

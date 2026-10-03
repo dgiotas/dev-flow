@@ -1,6 +1,6 @@
 ---
 description: Wire up this repo's dev-flow hook commands (.claude/test-cmd, .claude/lint-cmd, .claude/test-cmd-retries) by reading how the repo itself documents testing and linting, then prove they work.
-argument-hint: [retries=N] [force-container] [force-host]
+argument-hint: '[retries=N] [force-container] [force-host]'
 ---
 
 Set up the hook commands for this repo. Arguments (all optional): $ARGUMENTS
