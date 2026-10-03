@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: threat-no-fp
+description: Same app with a correct ownership check; must not produce a high BOLA finding.
+tags: [threat-model]
+context:
+  scaffold_script: fixture.sh

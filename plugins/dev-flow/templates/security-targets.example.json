@@ -1,0 +1,18 @@
+{
+  "schema": "dev-flow/security-targets/v1",
+  "authorized_by": "<owner name>",
+  "authorized_on": "2026-10-03",
+  "allow": [
+    { "name": "local", "base_url": "http://localhost:8080", "env": "local" },
+    {
+      "name": "dev",
+      "base_url": "https://api.dev.example.internal",
+      "env": "dev",
+      "credential_env": ["DEV_API_TOKEN"]
+    }
+  ],
+  "deny_patterns": ["*.prod.*", "*.live.*", "api.example.com"],
+  "limits": { "max_vus": 200, "max_duration_seconds": 600, "max_rps": 500 },
+  "pci_scope": false,
+  "notes": "Load and active security tests run against local and dev only. Credentials come from the environment variables named in credential_env, never from this file."
+}

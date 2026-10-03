@@ -6,24 +6,27 @@ A private Claude Code plugin marketplace repo: one plugin (`dev-flow`) providing
 
 | Task | Command |
 |---|---|
-| Validate the repo (JSON + shell syntax) | `bash .claude/test-cmd` |
+| Validate the repo (JSON, shell syntax, YAML frontmatter, `tests/*.sh`) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push, then `claude plugin tag plugins/dev-flow --push` on main; colleagues run `claude plugin marketplace update` then `/plugin update`, then `/reload-plugins` or a new session |
 
-No package manager, no build step, no CI config in this repo (verified: no `.github/`, no `package.json`). `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo — is the closest thing to a test suite here.
+No package manager, no build step, no CI config in this repo (verified: no `.github/`, no `package.json`). `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo, plus the `tests/*.sh` behavioural suites — is the closest thing to a test suite here.
 
 ## Layout
 
 - `.claude-plugin/marketplace.json` — marketplace manifest, lists the one plugin at `./plugins/dev-flow`.
 - `plugins/dev-flow/.claude-plugin/plugin.json` — plugin manifest; `version` here is what `/plugin update` picks up.
-- `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`); frontmatter `model:` pins the model per stage.
-- `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`); same `model:` frontmatter.
+- `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`, `threat-modeler`); frontmatter `model:` pins the model per stage.
+- `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`, `/dev-flow:threat-model`); same `model:` frontmatter.
 - `plugins/dev-flow/skills/*/SKILL.md` — the nine dev skills; each is one directory with one `SKILL.md`.
 - `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check), `Stop` (stop-gate), `PreCompact` (pre-compact-snapshot) and `SessionStart` (session-start-restore) to scripts in `hooks/scripts/`.
 - `plugins/dev-flow/hooks/scripts/*.sh` — the five hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
 - `plugins/dev-flow/scripts/hooks-policy.sh` — reports whether on-disk managed settings block hooks (`allowManagedHooksOnly`/`disableAllHooks`) or project permission rules; used by `init-hooks`/`onboard` step 0 to enter hookless mode after a dead guard probe.
+- `plugins/dev-flow/scripts/security-targets.sh` — fail-closed allow/refuse decision for a target URL and requested load against the committed `.claude/security-targets.json`; tested by `tests/security-targets.sh`.
+- `tests/*.sh` — repo-only behavioural test suites (not shipped in the plugin), run by `.claude/test-cmd`.
+- `plugins/dev-flow/evals/` — `claude plugin eval` cases (billed; run only with approval); `results/` is gitignored.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
 - `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`; defaults to the dgiotas/dev-flow GitHub source when piped (curl | bash); DEV_FLOW_VERSION pins a dev-flow--v<ver> tag.
 - `uninstall.sh` — removes dev-flow (opt-in `--remove-tools` / `--remove-superpowers`); `curl | bash`-safe like `install.sh`.

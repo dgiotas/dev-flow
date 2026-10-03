@@ -13,4 +13,9 @@ while IFS= read -r -d '' f; do
   out=$(ruby -ryaml -e 't = File.read(ARGV[0]); exit unless t.start_with?("---\n"); YAML.safe_load(t.split(/^---\s*$/, 3)[1])' "$f" 2>&1) || { echo "invalid YAML frontmatter: $f"; echo "$out" | head -1; fail=1; }
 done < <(find . -name '*.md' -not -path './.git/*' -print0)
 
+for t in tests/*.sh; do
+  [ -f "$t" ] || continue
+  out=$(bash "$t" 2>&1) || { echo "test failed: $t"; echo "$out" | grep -v '^PASS:' | tail -20; fail=1; }
+done
+
 exit $fail

@@ -5,3 +5,4 @@
 .claude/.devflow-state.json
 .claude/plans/
 .claude/specs/
+plugins/dev-flow/evals/results/

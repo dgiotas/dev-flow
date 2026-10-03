@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: 'Review code or a diff for security problems: authentication and sessions, authorization, injection, secrets, sensitive data and payment-card handling, input validation, dependency risk, and unsafe defaults. Use when the user asks for a security review or audit, touches auth, JWT, sessions, payments, PCI-related code, file uploads, user input, crypto or external calls, or asks "is this safe" or "any vulnerabilities". Report-only unless told to fix.'
+description: 'Review code or a diff for security problems: authentication and sessions, authorization, injection, secrets, sensitive data and payment-card handling, input validation, dependency risk, and unsafe defaults. Use when the user asks for a security review or audit, touches auth, JWT, sessions, payments, PCI-related code, file uploads, user input, crypto or external calls, or asks "is this safe" or "any vulnerabilities". For a whole-API-surface threat model use /dev-flow:threat-model instead. Report-only unless told to fix.'
 ---
 
 # Security review
@@ -8,7 +8,7 @@ description: 'Review code or a diff for security problems: authentication and se
 Review the diff or the named area. Report findings; do not change code unless asked. State what you checked and what you could not.
 
 ## Procedure
-1. **Scope**: identify entry points touched (routes, controllers, consumers, CLI, cron) and trust boundaries (browser, other services, third parties, DB).
+1. **Scope**: identify entry points touched (routes, controllers, consumers, CLI, cron) and trust boundaries (browser, other services, third parties, DB). If a threat model in docs/threats/*.md covers this area, read it first for the surface and known findings; do not re-derive it.
 2. **Walk the checklist** below, only for what the code touches. Trace real data flow from input to sink using `code-intel`; do not flag from names alone.
 3. **Prove it**: for each finding give a concrete exploit or failure scenario and the exact `path:line`. Drop findings you cannot substantiate or list them as "unconfirmed".
 4. **Report**: severity (critical/high/medium/low), location, scenario, fix. Then "checked and clean" and "not checked".

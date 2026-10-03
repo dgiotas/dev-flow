@@ -238,9 +238,11 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `/dev-flow:init-rules <stack>` | Command | Adapts stack rule templates into the repo's `.claude/rules`. |
 | `/dev-flow:init-hooks` | Command | Derives `.claude/test-cmd` / `lint-cmd` from your AGENTS.md, Makefile, manifests or CI, then verifies them. |
 | `/dev-flow:init-codegraph` | Command | Builds/refreshes the local CodeGraph index for this repo. |
+| `/dev-flow:threat-model [scope]` | Command | Maps the API surface to OWASP API Top 10 / CWE with cited evidence via `threat-modeler`; saves `docs/threats/<slug>.md` for review. Report-only. |
 | `spec-architect` (Opus) | Agent | Investigates, resolves ambiguities, writes spec and plan. |
 | `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. |
 | `reviewer` (Opus) | Agent | Read-only diff review against spec. |
+| `threat-modeler` (Opus) | Agent | Read-only and offline (no file-writing, shell or web tools); returns the threat model as text. |
 | `code-intel` | Skill | Picks Semble, CodeGraph, Context7, DevTools or `rg`. |
 | `investigate` | Skill | Read-only, cited codebase Q&A. |
 | `fix-bug` | Skill | Red test, root cause, minimal fix, verify. |
@@ -248,7 +250,7 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `setup-rules` | Skill | Generates `CLAUDE.md` and rules from the repo. |
 | `dead-code-audit` | Skill | Report-only cleanup audit. |
 | `git-workflow` | Skill | Branches, commits, PR text, review feedback. Never pushes unasked. |
-| `security-review` | Skill | Auth, injection, secrets, PCI-adjacent and dependency checklist. Report-only. |
+| `security-review` | Skill | Auth, injection, secrets, PCI-adjacent and dependency checklist. Report-only. Points to `/dev-flow:threat-model` for whole-surface modelling. |
 | `db-migration` | Skill | Expand/migrate/contract, backfills, rollback. Never runs against shared DBs. |
 | `post-edit-check` | Hook | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
 | `stop-gate` | Hook | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
@@ -409,6 +411,8 @@ None are created by installing; they are per repo, and everything works without 
 | `.claude/test-cmd` | shell script body, run as `bash .claude/test-cmd` from the repo root; exit 0 = pass | The stop gate. Runs before Claude may finish any turn that changed files. | Yes — shared team gate |
 | `.claude/lint-cmd` | shell script body; receives the **repo-relative path of the edited file as `$1`** | Per-edit check. Replaces the built-in native checks — only needed for containerised or custom toolchains. | Yes |
 | `.claude/test-cmd-retries` | a single number, e.g. `3` | How many times the stop gate blocks before giving up loudly. Default 3 when absent; reduced to stay below the harness cap (see [Stop gate](#stop-gate)). | Personal preference |
+| `.claude/security-targets.json` | JSON, schema `dev-flow/security-targets/v1` (copy `templates/security-targets.example.json`) | Which non-production targets future load and active-security agents may touch, and the ceilings. No file, no run. See [Security targets config](#security-targets-config). | Yes. If your .gitignore ignores `.claude/`, add `!.claude/security-targets.json` |
+| `docs/threats/<slug>.md` | Markdown, written by `/dev-flow:threat-model` | Threat model awaiting human review ("Reviewed by" blank until signed off). | Yes, through a normal PR |
 
 No shebang and no `chmod` needed — both are invoked through `bash`.
 
@@ -499,6 +503,74 @@ The result is the spec's "Assumptions and open questions" table. `/dev-flow:buil
 
 The check lives in `agents/spec-architect.md`, because settling categories from the code needs the Opus investigation. Relaying questions lives in `commands/spec.md`, because a subagent cannot talk to you mid-run. It is not a separate skill: it has one user, and a skill would auto-fire on unrelated vague requests. Adapted from the deep-interview skill in [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) (MIT); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+### Threat modelling
+
+`/dev-flow:threat-model [scope]` maps a repo's API surface to the OWASP API Security Top 10 and the CWE classes that apply. The data flow:
+
+```
+/dev-flow:threat-model <scope>
+  → main session (sonnet): date, sha, guidance file, one WebSearch → baseline line
+  → threat-modeler (opus; Read/Grep/Glob/codegraph only) → reply text
+  → main session writes docs/threats/<slug>.md verbatim → grep redaction check → summary
+```
+
+- **Output and review.** The threat model is written to `docs/threats/<slug>.md` (an existing file is overwritten; git keeps history). It has a blank "Reviewed by" header until a human signs off. Commit it through a normal PR. The command never commits, pushes or opens a PR.
+- **Network posture.** The agent has no network tools. The command makes one `WebSearch` for the current OWASP API Security Top 10 edition and passes the result in. If the search is unavailable, denied or inconclusive, the baseline is "2023 (current edition not checked)" and the file says so.
+- **What it refuses.** No exploit payloads, no secrets, keys, tokens, card numbers or personal data in the output (`[REDACTED]` instead), and no invented findings: evidence is `path:line`, and a finding is `Confidence: verified` only when the path was traced end to end. When the repo has no API surface the agent replies `NO-SURFACE: <reason>` and nothing is written.
+- **Not PCI testing.** Every threat model carries the sentence "This threat model is not penetration testing or ASV scanning and does not satisfy PCI DSS testing requirements; treat it as input to whoever owns compliance."
+
+What is mechanical and what is an instruction:
+
+| Claim | How it is enforced | Holds in hookless mode? |
+|---|---|---|
+| threat-modeler cannot write files | `tools:` allowlist has no Write/Edit/Bash | yes, mechanical |
+| threat-modeler has no network | `tools:` has no Bash/WebFetch/WebSearch/context7/semble | yes, mechanical (codegraph is local) |
+| the threat model goes only to `docs/threats/<slug>.md` | command instruction (the main session can write anywhere) | instruction-level |
+| no exploit payloads, no secrets in output | agent instruction plus the command's report-only grep | instruction-level, with a mechanical grep as a check |
+
+These are an agent and a command, not hooks, so threat modelling works unchanged in hookless mode.
+
+### Security targets config
+
+`.claude/security-targets.json` (schema `dev-flow/security-targets/v1`, template `templates/security-targets.example.json`) lists the non-production targets that future load and active-security agents may touch, and the ceilings. A field is required unless marked optional:
+
+| Field | Rule |
+|---|---|
+| `schema` | exactly `"dev-flow/security-targets/v1"` |
+| `authorized_by` | non-empty string |
+| `authorized_on` | string `YYYY-MM-DD` |
+| `allow` | non-empty array; each entry has a string `name`, an `env` matching `^[A-Za-z0-9_-]+$`, and a `base_url` matching `^https?://[^/?#@[]+([/?#]|$)` (no credentials, no IPv6 literal); `name`, `base_url` and every deny pattern contain no control characters; optional `credential_env` is an array of environment variable names (`^[A-Z_][A-Z0-9_]*$`). Values are never stored |
+| `deny_patterns` | array of strings (shell globs matched against the target host) |
+| `limits` | object with `max_vus`, `max_duration_seconds` and `max_rps`, each an integer from 1 to 1000000000 |
+| `pci_scope` | boolean |
+| `notes` | optional string |
+
+The validator `plugins/dev-flow/scripts/security-targets.sh` decides allow or refuse:
+
+```
+bash security-targets.sh <target> [--vus N] [--duration SECONDS] [--rps N]
+```
+
+`<target>` is an `allow[].name` or an `http(s)://` URL. The config path is `.claude/security-targets.json` under `CLAUDE_PROJECT_DIR` (or the current directory); `DEV_FLOW_SECURITY_TARGETS` overrides it for tests. Output is `key=value` lines ending in `summary=`. Exit 0 means `decision=allow`; every refusal is `decision=refuse`, `reason=<code>` and exit 1, so any error fails closed. IPv6 literal hosts such as `http://[::1]:8080` are not supported and are refused: `reason=usage` for a URL target, `reason=config-invalid` for a `base_url`. Checks run in this order and the first failure wins:
+
+| # | Check | Reason |
+|---|---|---|
+| 1 | target given; only `--vus/--duration/--rps`, each followed by a decimal integer from 1 to 18 digits with no leading zero; each flag at most once; a URL target has no `@` or `[` (IPv6 literal) in its authority; the target has no control characters | `reason=usage` |
+| 2 | `jq` on PATH | `reason=jq-missing` |
+| 3 | config file exists, and `CLAUDE_PROJECT_DIR`, if set and non-empty, is enterable (no fallback to the current directory) | `reason=config-missing` |
+| 4 | config is valid JSON | `reason=config-malformed` |
+| 5 | config matches the schema above | `reason=config-invalid` |
+| 6 | `pci_scope` is false | `reason=pci-scope` |
+| 7 | a name is looked up in `allow[]`; a URL is used as given | `reason=not-allowlisted` |
+| 8 | no `deny_patterns` glob matches the host; checked before the allowlist, so deny always wins | `reason=deny-pattern` |
+| 9 | not production: the entry's `env` is not `prod`, `production` or `live`, and no dot-separated host label is | `reason=production` |
+| 10 | the URL equals `base_url`, or starts with it followed by `/`, `?` or `#` | `reason=not-allowlisted` |
+| 11 | each requested `--vus/--duration/--rps` is within `max_vus/max_duration_seconds/max_rps` | `reason=limit-exceeded` |
+
+The allowlist is a prefix match with a boundary, so `http://localhost:80801` does not match `http://localhost:8080`, and `https://api.dev.internal.evil.com` does not match `https://api.dev.internal`. The script refuses rather than caps: lowering a request to fit is the calling agent's job.
+
+Nothing in this release calls the validator yet: it is the gate the planned security-test-author and load-tester agents will be required to call. The script is mechanical; whether an agent calls it is an instruction unless a later release adds a hook, and a hook would itself be absent in hookless mode. The refusal rules are covered by `tests/security-targets.sh`, which `.claude/test-cmd` runs.
+
 ### Model routing
 
 | Stage | Model |
@@ -506,6 +578,7 @@ The check lives in `agents/spec-architect.md`, because settling categories from 
 | `/dev-flow:spec` and `spec-architect` | Opus |
 | `/dev-flow:build` orchestration and `implementer` | Sonnet |
 | `reviewer` | Opus |
+| `/dev-flow:threat-model` and `threat-modeler` | Sonnet orchestrates; Opus models |
 
 Agent-level `model:` pins each stage even if the session started on another model. To change it, edit the `model:` line in `agents/*.md` and `commands/*.md` (`opus`, `sonnet`, `haiku`, a full model ID, or `inherit`).
 
@@ -605,6 +678,9 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
 - The clarification check (seven categories, the five-question cap, waiting only on `blocking`, and no questions for a fully specified request) is prompt instructions, not enforced by the harness, and was only spot-checked in two headless runs on a fixture repo during 1.16.0 development.
 - Hookless mode (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)) is instruction-level, not mechanical: it relies on the model following `.claude/lint-cmd`/`.claude/test-cmd` and the guidance file rather than a hook blocking the action.
+- threat-modeler findings are model judgement, checked only by the synthetic eval cases in `plugins/dev-flow/evals/threat-*`, and are not a security sign-off.
+- "Only writes `docs/threats/<slug>.md`" is a command instruction (the agent itself cannot write), and the redaction grep is a pattern check, not a guarantee.
+- The threat-modeler evals are billed and were last run: not yet run.
 
 ## Changelog
 
@@ -615,7 +691,7 @@ Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/d
 | Task | Command |
 |---|---|
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
-| Validate the repo (JSON + shell syntax) | `bash .claude/test-cmd` |
+| Validate the repo (JSON, shell syntax, YAML frontmatter, `tests/*.sh`) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, merge to `main`, then `claude plugin tag plugins/dev-flow --push` (creates and pushes the `dev-flow--v<version>` tag, validating the manifest) |
 
