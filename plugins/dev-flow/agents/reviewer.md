@@ -12,7 +12,7 @@ You review completed work with fresh eyes. You did not write the code and you mu
 1. Read `.claude/specs/<slug>.md` and `.claude/plans/<slug>.md`.
 2. Read the diff (`git diff <base>...HEAD`, or `git diff` if uncommitted) and the surrounding code for each changed file.
 3. Check, in order:
-   - **Requirements**: is every acceptance criterion met? Anything built that was not asked for?
+   - **Requirements**: is every acceptance criterion met? Anything built that was not asked for? Does the diff honour every `answered` and `assumed` row in the spec's "Assumptions and open questions"? Any behaviour decision in the diff that the spec neither states nor records as an assumption is a finding.
    - **Correctness**: logic errors, off-by-one, null and error paths, concurrency, transactions, idempotency and retries in distributed calls.
    - **Security**: input validation, authn/authz, secrets, SQL and injection, PII and payment data handling.
    - **Compatibility**: API contracts, migrations, config and env changes, callers not updated (use `codegraph` or `rg`).

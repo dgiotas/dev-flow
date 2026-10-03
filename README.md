@@ -211,7 +211,8 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 ```text
 /dev-flow:spec add rate limiting to the ticket search API
-   -> review and edit .claude/plans/<slug>.md, answer the open questions
+   -> Opus checks 7 ambiguity categories against the code; only a blocking unknown stops to ask you (one message, at most five questions)
+   -> review and edit .claude/plans/<slug>.md; answer any question to override its default
    -> reply "ok build", or run /dev-flow:build <slug> yourself
 ```
 
@@ -219,7 +220,7 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 | Command | Use it when | What it does |
 |---|---|---|
-| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, writes `.claude/specs/<slug>.md` + `.claude/plans/<slug>.md` with test-first tasks and open questions. No code. |
+| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. |
 | `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on Sonnet `implementer`, review on Opus `reviewer`. |
 | `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet runs tasks via `implementer` on a branch, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
 | `/dev-flow:onboard` | first time in a repo | CodeGraph index, then guidance file + rules, then verified hook commands, pausing at every guarded write. |
@@ -237,7 +238,7 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `/dev-flow:init-rules <stack>` | Command | Adapts stack rule templates into the repo's `.claude/rules`. |
 | `/dev-flow:init-hooks` | Command | Derives `.claude/test-cmd` / `lint-cmd` from your AGENTS.md, Makefile, manifests or CI, then verifies them. |
 | `/dev-flow:init-codegraph` | Command | Builds/refreshes the local CodeGraph index for this repo. |
-| `spec-architect` (Opus) | Agent | Investigates and writes spec and plan. |
+| `spec-architect` (Opus) | Agent | Investigates, resolves ambiguities, writes spec and plan. |
 | `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. |
 | `reviewer` (Opus) | Agent | Read-only diff review against spec. |
 | `code-intel` | Skill | Picks Semble, CodeGraph, Context7, DevTools or `rg`. |
@@ -473,6 +474,31 @@ All four are registered the moment the plugin is installed — none of them need
 
 Verify any of them with `claude mcp list`: expect `plugin:dev-flow:<name>: ... - ✔ Connected`. `✘ Failed to connect` on `codegraph` means the binary isn't on PATH; on the other three it usually means Node or `uv` is missing (see Getting Started > Prerequisites above).
 
+### Clarification check
+
+The `implementer` follows the plan literally, so an ambiguity that survives into the plan becomes wrong code. Before writing anything, `spec-architect` gives each of seven categories a status:
+
+| Category | Covers |
+|---|---|
+| Scope boundary | what is explicitly out of scope |
+| Acceptance | the observable behaviour that changes; how we know it works |
+| Data and contracts | schema, API shape, event payloads; old and new coexisting during rollout |
+| Failure behaviour | invalid input, downstream timeout, partial failure |
+| Compatibility | existing callers, other services, mixed-version deploys |
+| Non-functional | load, latency budget, security- or payment-sensitive areas |
+| Reuse | the existing pattern or module to follow |
+
+Each one is `answered` (from the request, the code — cited as `path:line` — or you), `assumed` (a stated assumption the plan is built on), or `blocking` (a wrong guess would throw the work away).
+
+- It settles what it can from the code first and never asks you what the repo already answers.
+- It asks at most five questions, as one numbered list in one message, each with the default it will use.
+- Only a `blocking` question stops the command before any file is written. Other questions are shown at plan review with their defaults: reply `ok build` to accept them, or answer one to have the spec and plan revised.
+- A fully specified request gets `Fully specified: no questions.` and nothing else.
+
+The result is the spec's "Assumptions and open questions" table. `/dev-flow:build` refuses a spec with a `blocking` row, passes the table to every `implementer` call, and `reviewer` flags diffs that contradict it or make decisions it does not record.
+
+The check lives in `agents/spec-architect.md`, because settling categories from the code needs the Opus investigation. Relaying questions lives in `commands/spec.md`, because a subagent cannot talk to you mid-run. It is not a separate skill: it has one user, and a skill would auto-fire on unrelated vague requests. Adapted from the deep-interview skill in [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) (MIT); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ### Model routing
 
 | Stage | Model |
@@ -577,6 +603,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.
 - `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
+- The clarification check (seven categories, the five-question cap, waiting only on `blocking`, and no questions for a fully specified request) is prompt instructions, not enforced by the harness, and was only spot-checked in two headless runs on a fixture repo during 1.16.0 development.
 - Hookless mode (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)) is instruction-level, not mechanical: it relies on the model following `.claude/lint-cmd`/`.claude/test-cmd` and the guidance file rather than a hook blocking the action.
 
 ## Changelog

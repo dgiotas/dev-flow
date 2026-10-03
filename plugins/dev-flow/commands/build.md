@@ -8,9 +8,9 @@ Implement the approved plan `.claude/plans/$ARGUMENTS.md` (spec: `.claude/specs/
 
 You are the orchestrator, running on the cheaper model. Keep your own context small: delegate the coding.
 
-1. Read the plan. If it is missing or has unresolved "Open questions", stop and tell me.
+1. Read the plan and the spec. If the plan is missing, or the spec's "Assumptions and open questions" section has any row with status `blocking`, or the spec has an unresolved "Open questions" section (older specs), stop and tell me. `assumed` rows are not blockers, and neither are numbered questions with a `default:` under that table: their defaults stand.
 2. Work on a branch or worktree, not the default branch. If the tree has unrelated uncommitted changes, stop and ask.
-3. For each task in dependency order, invoke the `implementer` subagent with only that task and the spec sections it references. Independent tasks (no shared files, no dependency) may run in parallel; otherwise run one at a time.
+3. For each task in dependency order, invoke the `implementer` subagent with only that task, the spec sections it references, and the spec's "Assumptions and open questions" section. Independent tasks (no shared files, no dependency) may run in parallel; otherwise run one at a time.
 4. After each task, confirm its verify command passed. If the implementer replies `BLOCKED`, stop and report to me. Do not improvise design changes.
 5. When all tasks are done, run the `verify-done` skill (tests, lint, behaviour check).
 6. Invoke the `reviewer` subagent (Opus) on the full diff. If it returns `CHANGES REQUIRED`, send blocker and major findings back to `implementer` as new tasks, then re-review once.
