@@ -13,5 +13,11 @@ You are the orchestrator, running on the cheaper model. Keep your own context sm
 3. For each task in dependency order, invoke the `implementer` subagent with only that task, the spec sections it references, and the spec's "Assumptions and open questions" section. Independent tasks (no shared files, no dependency) may run in parallel; otherwise run one at a time.
 4. After each task, confirm its verify command passed. If the implementer replies `BLOCKED`, stop and report to me. Do not improvise design changes.
 5. When all tasks are done, run the `verify-done` skill (tests, lint, behaviour check).
-6. Invoke the `reviewer` subagent (Opus) on the full diff. If it returns `CHANGES REQUIRED`, send blocker and major findings back to `implementer` as new tasks, then re-review once.
+6. Invoke the `reviewer` subagent (Opus) on the full diff. It has no shell, so collect its inputs yourself and paste them into the prompt:
+   - `base=$(git merge-base HEAD "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo main)")`
+   - the diff: `git diff "$base"` (committed and uncommitted work), plus each new file from `git ls-files --others --exclude-standard` shown with `git diff --no-index /dev/null <file>`. If the result is too large to paste, pass `git diff --stat "$base"` and the list of changed and new files instead, and say the reviewer must Read them.
+   - the log: `git log --oneline "$base"..HEAD`
+   - the output and exit code of `bash .claude/test-cmd`, or "no .claude/test-cmd" if it does not exist
+   - the spec and plan paths.
+   If it returns `CHANGES REQUIRED`, send blocker and major findings back to `implementer` as new tasks, then re-review once, collecting fresh inputs.
 7. Finish with: what was built, files changed, evidence of verification, remaining review findings, and anything not verified. Do not merge or push.

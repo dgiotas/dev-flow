@@ -240,8 +240,8 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `/dev-flow:init-codegraph` | Command | Builds/refreshes the local CodeGraph index for this repo. |
 | `/dev-flow:threat-model [scope]` | Command | Maps the API surface to OWASP API Top 10 / CWE with cited evidence via `threat-modeler`; saves `docs/threats/<slug>.md` for review. Report-only. |
 | `spec-architect` (Opus) | Agent | Investigates, resolves ambiguities, writes spec and plan. |
-| `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. |
-| `reviewer` (Opus) | Agent | Read-only diff review against spec. |
+| `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. Tool allowlist: read, edit, write, Bash, codegraph and context7; no web fetch or search, no subagents, no semble or browser tools. |
+| `reviewer` (Opus) | Agent | Diff review against spec. No shell or file-writing tools (Read, Grep, Glob, codegraph), so it cannot change the tree or git state; `/dev-flow:build` passes in the diff, commit log and test-command result. |
 | `threat-modeler` (Opus) | Agent | Read-only and offline (no file-writing, shell or web tools); returns the threat model as text. |
 | `code-intel` | Skill | Picks Semble, CodeGraph, Context7, DevTools or `rg`. |
 | `investigate` | Skill | Read-only, cited codebase Q&A. |
@@ -395,7 +395,7 @@ Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/d
 |---|---|---|
 | pre-write guard | `ask` rules in the shared, committed `.claude/settings.json` for `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)` (+ `deny Edit(/CLAUDE.md)` when it's a pointer), plus a guidance instruction | Claude Code permission prompt on every Write/Edit, for everyone in the repo (people whose hooks run get this on top of the guard); not Bash writes; ignored under `allowManagedPermissionRulesOnly` |
 | per-edit check | `.claude/lint-cmd`, always written in hookless mode, run by `implementer`, `verify-done` and the guidance "Quality gates" section | instruction-level |
-| stop gate | `.claude/test-cmd`, run by `implementer`, `verify-done`, `reviewer` and the guidance section | instruction-level; nothing blocks the end of a plain turn |
+| stop gate | `.claude/test-cmd`, run by `implementer` and `verify-done`, by the build orchestrator for `reviewer` (which passes in the result), and the guidance section | instruction-level; nothing blocks the end of a plain turn |
 | compaction snapshot | none — compaction is triggered by the harness, so there is nothing for an instruction to hook into; the plan in `.claude/plans/` remains the record | not available |
 
 Hookless mode is weaker: the model can skip an instruction, and only the admin fix above restores the mechanical gates.
@@ -594,7 +594,7 @@ Agent-level `model:` pins each stage even if the session started on another mode
 
 So `ok build` saves you retyping the slug and slash command, at the cost of the orchestration chatter running on the pricier model. The coding itself is Sonnet either way, since that's pinned on the `implementer` agent regardless of who invoked it. `/dev-flow:spec` says this out loud before proceeding. This depends on Claude Code actually pinning a command's model on explicit invocation, as its frontmatter documents — I haven't verified that live in this sandbox (same caveat as the model-routing section below).
 
-Also: `spec-architect`, `implementer` and `reviewer` are subagents, and a subagent cannot itself spawn further subagents. So the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here — the orchestrator is always the top-level session, never a subagent, so this isn't affected by that limit.
+Also: `spec-architect`, `implementer` and `reviewer` are subagents. A subagent can spawn further subagents only when its `tools:` list includes `Agent` (checked live on Claude Code 2.1.285), and none of these three lists it, so they do not. The orchestrator is always the top-level session, never a subagent, so the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here.
 
 ### Memory (optional)
 
@@ -681,6 +681,8 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - threat-modeler findings are model judgement, checked only by the synthetic eval cases in `plugins/dev-flow/evals/threat-*`, and are not a security sign-off.
 - "Only writes `docs/threats/<slug>.md`" is a command instruction (the agent itself cannot write), and the redaction grep is a pattern check, not a guarantee.
 - The threat-modeler evals are billed and were last run: not yet run.
+- Agent `tools:` lists are allowlists, and an entry that does not resolve is dropped without a warning; only a list where nothing resolves stops the agent launching. In Claude Code 2.1.285 the `implementer`'s `Grep`, `Glob`, `MultiEdit` and `TodoWrite` entries do not resolve (with Bash present, search goes through Bash), so it works with the rest. They stay listed for versions where they exist.
+- 1.17.1 fixed two tool grants: `reviewer` no longer has Bash (it could run `git checkout -- .` or `git reset --hard` on the diff it was reviewing), and `implementer` gained an allowlist (it previously inherited every tool, including web search, subagents and the browser MCP).
 
 ## Changelog
 
