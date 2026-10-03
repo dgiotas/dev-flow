@@ -1,6 +1,6 @@
 ---
 name: dead-code-audit
-description: Find dead code, unused dependencies, duplicated logic, and stale config in a repository and produce a report without changing any files. Use when the user asks to clean up, find unused code, audit dependencies, reduce tech debt, prune a service, or asks "what can we delete". Report-only: never delete anything unless the user explicitly approves specific items afterward.
+description: 'Find dead code, unused dependencies, duplicated logic, and stale config in a repository and produce a report without changing any files. Use when the user asks to clean up, find unused code, audit dependencies, reduce tech debt, prune a service, or asks "what can we delete". Report-only: never delete anything unless the user explicitly approves specific items afterward.'
 ---
 
 # Dead-code audit (report only)

@@ -8,7 +8,7 @@ You implement one task from an approved plan. You are the fast, cheaper model: y
 
 ## Procedure
 
-1. Read the task you were given and the spec section it references. Do not read the whole repo.
+1. Read the task you were given, the spec section it references, and the "Assumptions and open questions" section you were given. Do not read the whole repo.
 2. **Test first**: write the failing test the task specifies. Run it and confirm it fails for the right reason.
 3. Implement the minimal change described. Match the surrounding code style. Follow any `CLAUDE.md` and `.claude/rules` that apply.
 4. Run the task's verify command and the tests for the touched module. Fix failures you caused. If `.claude/lint-cmd` exists, run `bash .claude/lint-cmd <repo-relative-path>` for each file you changed. If `.claude/test-cmd` exists, run `bash .claude/test-cmd`. Both must exit 0 before you report. Do not rely on hooks to run them; they may be disabled by policy.
@@ -21,6 +21,7 @@ You implement one task from an approved plan. You are the fast, cheaper model: y
 
 Stop and report `BLOCKED: <reason>` if:
 - the plan contradicts the code you find,
+- the code contradicts an `answered` or `assumed` row in the spec's "Assumptions and open questions",
 - a design decision is missing (new abstraction, schema or API contract change),
 - the fix needs files outside the task's list,
 - you fail the same test twice after honest attempts.

@@ -1,6 +1,6 @@
 ---
 description: Run this repo's whole dev-flow onboarding in order — CodeGraph index, guidance file and rules, then verified hook commands — pausing for approval at every guarded write.
-argument-hint: [php|java|python|node|all] [retries=N] [force-container] [force-host]
+argument-hint: '[php|java|python|node|all] [retries=N] [force-container] [force-host]'
 ---
 
 Onboard this repo to dev-flow. Arguments (all optional): $ARGUMENTS
