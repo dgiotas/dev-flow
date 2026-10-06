@@ -222,12 +222,14 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 |---|---|---|
 | `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. |
 | `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on Sonnet `implementer`, review on Opus `reviewer`. |
-| `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet runs tasks via `implementer` on a branch, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
+| `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet asks branch (default) or worktree and whether to start from the current (default) or the default branch, runs tasks via `implementer` there, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
 | `/dev-flow:onboard` | first time in a repo | CodeGraph index, then guidance file + rules, then verified hook commands, pausing at every guarded write. |
 
-Plans and specs live in `.claude/specs/` and `.claude/plans/` (previously under `docs/`); they are local work product, not committed, so add both to your repo's `.gitignore` (otherwise they show as untracked changes and make the stop gate run tests on Q&A turns).
+Plans and specs live in `.claude/specs/` and `.claude/plans/` (previously under `docs/`); they are local work product, not committed, so add both to your repo's `.gitignore` (otherwise they show as untracked changes and make the stop gate run tests on Q&A turns). If you choose a worktree when the build asks, it is created at `.claude/worktrees/<slug>` on a new branch from the current or the default branch, whichever you pick, with copies of the plan and spec; gitignore `.claude/worktrees/` too. New branches, from the build or the `git-workflow` skill, are named `[<prefix>/]<type>/<name>`: `<type>` is `feature`, `fix`, `chore` or `refactor`, picked from what the work is, and `<name>` is the plan slug or a short slug. To give a project a prefix, commit a one-line `.claude/branch-prefix` file, for example `team-web`, so a feature branch becomes `team-web/feature/<name>`. Only the branch carries the prefixes; a worktree's directory stays `.claude/worktrees/<name>`.
 
 After upgrading to 1.15.0, move your existing `plans` and `specs` folders from `docs/` into `.claude/` so build and the compaction snapshot find them.
+
+In 1.18.0 new feature branches are named `feature/...` instead of `feat/...`. Existing branches are not renamed; if your tooling or CI matches `feat/*`, make it accept `feature/*` too.
 
 Model pinning per stage is documented in frontmatter but not verified live — see Model routing.
 
@@ -249,7 +251,7 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `verify-done` | Skill | Evidence before saying "done". |
 | `setup-rules` | Skill | Generates `CLAUDE.md` and rules from the repo. |
 | `dead-code-audit` | Skill | Report-only cleanup audit. |
-| `git-workflow` | Skill | Branches, commits, PR text, review feedback. Never pushes unasked. |
+| `git-workflow` | Skill | Branches (named `[<prefix>/]<type>/<name>`, asking branch or worktree, and current or default branch as the base, for a new one), commits, PR text, review feedback. Never pushes unasked. |
 | `security-review` | Skill | Auth, injection, secrets, PCI-adjacent and dependency checklist. Report-only. Points to `/dev-flow:threat-model` for whole-surface modelling. |
 | `db-migration` | Skill | Expand/migrate/contract, backfills, rollback. Never runs against shared DBs. |
 | `post-edit-check` | Hook | Syntax and lint on each edited file (PHP, Python, TS/JS, JSON). |
@@ -683,6 +685,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - The threat-modeler evals are billed and were last run: not yet run.
 - Agent `tools:` lists are allowlists, and an entry that does not resolve is dropped without a warning; only a list where nothing resolves stops the agent launching. In Claude Code 2.1.285 the `implementer`'s `Grep`, `Glob`, `MultiEdit` and `TodoWrite` entries do not resolve (with Bash present, search goes through Bash), so it works with the rest. They stay listed for versions where they exist.
 - 1.17.1 fixed two tool grants: `reviewer` no longer has Bash (it could run `git checkout -- .` or `git reset --hard` on the diff it was reviewing), and `implementer` gained an allowlist (it previously inherited every tool, including web search, subagents and the browser MCP).
+- Worktree mode (`commands/build.md` step 2 and the `git-workflow` skill) is instruction-level and not yet run in a live session, and neither is asking both questions in one `AskUserQuestion` call. Starting from the default branch is only offered on a clean tree, and the skill only offers a worktree on a clean tree, since switching base could mix or lose uncommitted changes and a worktree would leave them behind. The default branch is detected from local refs only (`origin/HEAD`, then `main`, `master`, `develop`), without fetching, so pull it first if it may be stale. After `EnterWorktree`, Claude Code keeps `${CLAUDE_PROJECT_DIR}` on the main checkout, and every dev-flow hook `cd`s there: the stop gate, per-edit checks, compaction snapshot and the guard's approval markers act on the main checkout, not the worktree. The explicit `.claude/test-cmd` and `.claude/lint-cmd` runs in the build and before each commit still cover the worktree. Approving a guarded guidance-file edit from inside a worktree may not work; it fails closed (the guard keeps blocking). The worktree is never removed automatically: run `git worktree remove .claude/worktrees/<slug>` after merging. The build, the `git-workflow` skill and `worktree.sh` ignore `.claude/plans/`, `.claude/specs/` and `.claude/worktrees/` when deciding whether the tree is clean, and a failed copy of the plan or spec into a worktree stops with `error=copy-failed`. The worktree and branch then already exist and the script removes nothing; clean up with `git worktree remove --force <path>` then `git branch -D <branch>`, and retry.
 
 ## Changelog
 
