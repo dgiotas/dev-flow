@@ -44,7 +44,4 @@ jobs:
         if: always()
         with:
           name: evals-${{ env.TIER }}-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/evals
-            /tmp/claude-eval-*/out/trace.jsonl
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/evals

@@ -564,7 +564,7 @@ Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model sr
 
 **1.18.1 note:** earlier eval runs, if any, used no documented invocation. Without `--scaffold` and `--allow-tools Write Bash` they graded an empty workspace in which the command could not write its file.
 
-**CI:** needs `ANTHROPIC_API_KEY` as a repo secret. Fork PRs are skipped. The graders that read the list of created files were removed pending a diagnosis: in the first CI run they failed in all four cases for a reason not yet known, and the artifact now includes each run's `trace.jsonl`.
+**CI:** needs `ANTHROPIC_API_KEY` as a repo secret. Fork PRs are skipped. The graders that read the list of created files were removed pending a diagnosis: in the first CI run they failed in all four cases for a reason not yet known. An attempt to upload each run's `trace.jsonl` with the artifact found no file at `/tmp/claude-eval-*/out/`, so the created-file list was not recovered.
 
 **Local runs can fail on Docker symlinks.** Two attempted local runs on one macOS machine (Claude Code 2.1.285) errored before any agent started, at $0 cost, with "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it — a Bash-granting evaluation cannot run here". The machine's `~/.docker/cli-plugins/` held symlinks; setting `DOCKER_CONFIG` to an empty directory did not help. Nothing was measured from those attempts. Whether other machines or GitHub-hosted runners are affected is not verified.
 
