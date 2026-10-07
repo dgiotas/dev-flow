@@ -532,6 +532,42 @@ What is mechanical and what is an instruction:
 
 These are an agent and a command, not hooks, so threat modelling works unchanged in hookless mode.
 
+### Evals
+
+Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model src` against a generated fixture repo:
+
+- `threat-bola`: a handler fetches a record by id with no owner check; the model must report a BOLA (API1) finding.
+- `threat-no-fp`: the same shape with an owner check; no high-severity BOLA finding may appear.
+- `threat-no-surface`: a repo with no network surface; the command must say so and write nothing.
+- `threat-unverified`: authorization is delegated to a gateway the repo does not show; API1 must be marked unverified, name the gateway, and not be reported as verified.
+
+**How to run.** The only supported invocation is `bash ci/eval-run.sh <pr|nightly> <out-dir>`. It is billed, so run it only with approval. It wraps `claude plugin eval` with flags that each matter:
+
+- `--scaffold`: the fixtures are not applied without it.
+- `--allow-tools Write Bash`: without them the command cannot write `docs/threats/<slug>.md`. `WebSearch` is deliberately not granted, so runs are deterministic and offline and the baseline line falls back to 2023.
+- `--trust-plugin` and `--no-publish`: no interactive trust prompt, and nothing is published.
+- `--model` and `--judge-model` are pinned (`DEVFLOW_EVAL_MODEL`, `DEVFLOW_JUDGE_MODEL` override them).
+- `--max-cost-usd`: the tier ceiling below (`DEVFLOW_MAX_COST_USD` overrides it).
+
+| Tier | Trigger | Runs | Arms | Gate | Ceiling |
+|---|---|---|---|---|---|
+| `pr` | same-repo PRs touching `plugins/dev-flow/**`, `ci/**` or the workflow | 1 | with only | every run completes without error and every deterministic grader passes; `llm` verdicts are shown, not gated | $5 |
+| `nightly` | 03:17 UTC daily, or manual | 3 | with and without | not partial, no run errors, no case Δ < 0, mean Δ > 0.25 (`DEVFLOW_MIN_MEAN_DELTA`) | $25 |
+
+**Exit codes:** 0 pass, 1 fail, 2 inconclusive (cost ceiling, auth failure or rate limit; never a pass).
+
+**Cost per full run:** estimated $6–12 at list price (nightly), $2–3 (PR tier), not yet measured.
+
+**Falsifiability:** a case whose without-plugin arm passes measures nothing. Not yet run.
+
+**MCP servers in evals:** they do not start (there is no `evals/mocks/`). The fixtures have no `.codegraph/`, so threat-modeler takes its Grep/Glob path, which is the shipped behaviour on an unindexed repo. The indexed path is not covered by evals.
+
+**1.18.1 note:** earlier eval runs, if any, used no documented invocation. Without `--scaffold` and `--allow-tools Write Bash` they graded an empty workspace in which the command could not write its file.
+
+**CI:** needs `ANTHROPIC_API_KEY` as a repo secret. Fork PRs are skipped.
+
+**Local runs can fail on Docker symlinks.** Two attempted local runs on one macOS machine (Claude Code 2.1.285) errored before any agent started, at $0 cost, with "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it — a Bash-granting evaluation cannot run here". The machine's `~/.docker/cli-plugins/` held symlinks; setting `DOCKER_CONFIG` to an empty directory did not help. Nothing was measured from those attempts. Whether other machines or GitHub-hosted runners are affected is not verified.
+
 ### Security targets config
 
 `.claude/security-targets.json` (schema `dev-flow/security-targets/v1`, template `templates/security-targets.example.json`) lists the non-production targets that future load and active-security agents may touch, and the ceilings. A field is required unless marked optional:
@@ -682,7 +718,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - Hookless mode (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)) is instruction-level, not mechanical: it relies on the model following `.claude/lint-cmd`/`.claude/test-cmd` and the guidance file rather than a hook blocking the action.
 - threat-modeler findings are model judgement, checked only by the synthetic eval cases in `plugins/dev-flow/evals/threat-*`, and are not a security sign-off.
 - "Only writes `docs/threats/<slug>.md`" is a command instruction (the agent itself cannot write), and the redaction grep is a pattern check, not a guarantee.
-- The threat-modeler evals are billed and were last run: not yet run.
+- The threat-modeler evals are billed and not yet run; see [Evals](#evals).
 - Agent `tools:` lists are allowlists, and an entry that does not resolve is dropped without a warning; only a list where nothing resolves stops the agent launching. In Claude Code 2.1.285 the `implementer`'s `Grep`, `Glob`, `MultiEdit` and `TodoWrite` entries do not resolve (with Bash present, search goes through Bash), so it works with the rest. They stay listed for versions where they exist.
 - 1.17.1 fixed two tool grants: `reviewer` no longer has Bash (it could run `git checkout -- .` or `git reset --hard` on the diff it was reviewing), and `implementer` gained an allowlist (it previously inherited every tool, including web search, subagents and the browser MCP).
 - Worktree mode (`commands/build.md` step 2 and the `git-workflow` skill) is instruction-level and not yet run in a live session, and neither is asking both questions in one `AskUserQuestion` call. Starting from the default branch is only offered on a clean tree, and the skill only offers a worktree on a clean tree, since switching base could mix or lose uncommitted changes and a worktree would leave them behind. The default branch is detected from local refs only (`origin/HEAD`, then `main`, `master`, `develop`), without fetching, so pull it first if it may be stale. After `EnterWorktree`, Claude Code keeps `${CLAUDE_PROJECT_DIR}` on the main checkout, and every dev-flow hook `cd`s there: the stop gate, per-edit checks, compaction snapshot and the guard's approval markers act on the main checkout, not the worktree. The explicit `.claude/test-cmd` and `.claude/lint-cmd` runs in the build and before each commit still cover the worktree. Approving a guarded guidance-file edit from inside a worktree may not work; it fails closed (the guard keeps blocking). The worktree is never removed automatically: run `git worktree remove .claude/worktrees/<slug>` after merging. The build, the `git-workflow` skill and `worktree.sh` ignore `.claude/plans/`, `.claude/specs/` and `.claude/worktrees/` when deciding whether the tree is clean, and a failed copy of the plan or spec into a worktree stops with `error=copy-failed`. The worktree and branch then already exist and the script removes nothing; clean up with `git worktree remove --force <path>` then `git branch -D <branch>`, and retry.
@@ -698,6 +734,7 @@ Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/d
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
 | Validate the repo (JSON, shell syntax, YAML frontmatter, `tests/*.sh`) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
+| Run the eval suite (billed; approval first) | `bash ci/eval-run.sh <pr\|nightly> <out-dir>` |
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, merge to `main`, then `claude plugin tag plugins/dev-flow --push` (creates and pushes the `dev-flow--v<version>` tag, validating the manifest) |
 
 Issues and PRs: https://github.com/dgiotas/dev-flow/issues.
