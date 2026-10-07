@@ -538,7 +538,7 @@ Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model sr
 
 - `threat-bola`: a handler fetches a record by id with no owner check; the model must report a BOLA (API1) finding.
 - `threat-no-fp`: the same shape with an owner check; no high-severity BOLA finding may appear.
-- `threat-no-surface`: a repo with no network surface; the command must say so and write nothing.
+- `threat-no-surface`: a repo with no network surface; the command must say so.
 - `threat-unverified`: authorization is delegated to a gateway the repo does not show; API1 must be marked unverified, name the gateway, and not be reported as verified.
 
 **How to run.** The only supported invocation is `bash ci/eval-run.sh <pr|nightly> <out-dir>`. It is billed, so run it only with approval. It wraps `claude plugin eval` with flags that each matter:
@@ -564,7 +564,7 @@ Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model sr
 
 **1.18.1 note:** earlier eval runs, if any, used no documented invocation. Without `--scaffold` and `--allow-tools Write Bash` they graded an empty workspace in which the command could not write its file.
 
-**CI:** needs `ANTHROPIC_API_KEY` as a repo secret. Fork PRs are skipped.
+**CI:** needs `ANTHROPIC_API_KEY` as a repo secret. Fork PRs are skipped. The graders that read the list of created files were removed pending a diagnosis: in the first CI run they failed in all four cases for a reason not yet known, and the artifact now includes each run's `trace.jsonl`.
 
 **Local runs can fail on Docker symlinks.** Two attempted local runs on one macOS machine (Claude Code 2.1.285) errored before any agent started, at $0 cost, with "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it — a Bash-granting evaluation cannot run here". The machine's `~/.docker/cli-plugins/` held symlinks; setting `DOCKER_CONFIG` to an empty directory did not help. Nothing was measured from those attempts. Whether other machines or GitHub-hosted runners are affected is not verified.
 

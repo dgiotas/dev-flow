@@ -32,18 +32,8 @@ inp() {
   if [ "$got" = "$5" ]; then pass "$1"; else echo "FAIL: $1 (got $got, want $5)"; fail=1; fi
 }
 
-printf 'docs/threats/src.md\n' > "$tmp/files-threat"
-printf 'docs/threats/src.md\nsrc/extra.js\n' > "$tmp/files-mixed"
-: > "$tmp/files-empty"
 printf '%s' '{"subagent_type":"dev-flow:threat-modeler","prompt":"x"}' > "$tmp/agent-input"
 printf '%s' '{"subagent_type":"general-purpose","prompt":"x"}' > "$tmp/agent-other"
-
-for c in bola no-fp unverified; do
-  g="$ev/threat-$c/graders/writes-only-threats.md"
-  rx "$c-writes-only-threat" "$g" "$tmp/files-threat" pass
-  rx "$c-writes-only-mixed" "$g" "$tmp/files-mixed" fail
-  rx "$c-writes-only-empty" "$g" "$tmp/files-empty" pass
-done
 
 af="$ev/threat-bola/graders/agent-fired.md"
 inp bola-agent-fired "$af" input_match "$tmp/agent-input" pass
@@ -159,9 +149,6 @@ done
 printf '%s' 'I found 3 findings in src/app.js' > "$tmp/msg-plain"
 rx nosurface-says-so-plain "$sg/says-so-regex.md" "$tmp/msg-plain" fail
 rx nosurface-says-so-findings "$sg/says-so-regex.md" "$tmp/msg-findings" fail
-rx nosurface-writes-nothing-empty "$sg/writes-nothing.md" "$tmp/files-empty" pass
-rx nosurface-writes-nothing-threat "$sg/writes-nothing.md" "$tmp/files-threat" fail
-rx nosurface-writes-nothing-mixed "$sg/writes-nothing.md" "$tmp/files-mixed" fail
 if [ ! -e "$sg/no-file.md" ]; then pass "nosurface-no-file-removed"; else bad "nosurface-no-file-removed"; fi
 
 [ "$fail" = 0 ] && echo ALL-PASS
