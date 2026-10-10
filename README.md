@@ -552,7 +552,7 @@ Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model sr
 | Tier | Trigger | Runs | Arms | Gate | Ceiling |
 |---|---|---|---|---|---|
 | `pr` | same-repo PRs touching `plugins/dev-flow/**`, `ci/**` or the workflow | 1 | with only | every run completes without error and every deterministic grader passes; `llm` verdicts are shown, not gated | $5 |
-| `nightly` | 03:17 UTC daily, or manual | 3 | with and without | not partial, no run errors, no case Δ < 0, mean Δ > 0.25 (`DEVFLOW_MIN_MEAN_DELTA`) | $25 |
+| `nightly` | manual only (Actions > evals > Run workflow), no schedule | 3 | with and without | not partial, no run errors, no case Δ < 0, mean Δ > 0.25 (`DEVFLOW_MIN_MEAN_DELTA`) | $25 |
 
 **Exit codes:** 0 pass, 1 fail, 2 inconclusive (cost ceiling, auth failure or rate limit; never a pass).
 

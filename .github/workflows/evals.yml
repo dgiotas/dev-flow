@@ -1,13 +1,12 @@
 # PR tier is one with-arm run per case, gated on deterministic graders only.
-# Nightly is the two-arm, three-run suite, gated on the delta between arms.
+# Nightly is the two-arm, three-run suite, gated on the delta between arms. It
+# runs only when started by hand (Actions > evals > Run workflow); no schedule.
 # result=inconclusive (exit 2) fails the job but is not a regression. Re-run.
 # Secrets aren't available to fork PRs, which are skipped.
 name: evals
 on:
   pull_request:
     paths: ['plugins/dev-flow/**', 'ci/**', '.github/workflows/evals.yml']
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       tier:
@@ -25,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
-      TIER: ${{ github.event_name == 'pull_request' && 'pr' || github.event_name == 'schedule' && 'nightly' || inputs.tier }}
+      TIER: ${{ github.event_name == 'pull_request' && 'pr' || inputs.tier }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
