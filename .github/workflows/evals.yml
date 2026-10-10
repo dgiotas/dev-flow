@@ -1,0 +1,46 @@
+# PR tier is one with-arm run per case, gated on deterministic graders only.
+# Nightly is the two-arm, three-run suite, gated on the delta between arms. It
+# runs only when started by hand (Actions > evals > Run workflow); no schedule.
+# result=inconclusive (exit 2) fails the job but is not a regression. Re-run.
+# Secrets aren't available to fork PRs, which are skipped.
+name: evals
+on:
+  pull_request:
+    paths: ['plugins/dev-flow/**', 'ci/**', '.github/workflows/evals.yml']
+  workflow_dispatch:
+    inputs:
+      tier:
+        type: choice
+        options: [pr, nightly]
+        default: nightly
+permissions:
+  contents: read
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  evals:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      TIER: ${{ github.event_name == 'pull_request' && 'pr' || inputs.tier }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Sandbox prerequisites for the Bash grant
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Install Claude Code (pinned)
+        run: npm install -g @anthropic-ai/claude-code@2.1.285 && claude --version
+      - name: Run eval suite and gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bash ci/eval-run.sh "$TIER" "$RUNNER_TEMP/evals"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: evals-${{ env.TIER }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/evals
