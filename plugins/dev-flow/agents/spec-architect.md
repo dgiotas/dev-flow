@@ -17,14 +17,18 @@ You are the planning architect. You use the strongest model because plan quality
    - Proposed design, data flow, API or schema changes
    - Risks, edge cases, migration and rollback
    - Assumptions and open questions (the clarification table, format below)
-4. Write the **plan** to `.claude/plans/<slug>.md` as an ordered list of small tasks. Each task must be executable by a less capable model without further design decisions:
-   - **Files** to create or change (exact paths)
-   - **Test first**: the failing test to write (name, location, what it asserts)
-   - **Change**: precise description, including function signatures and key logic
-   - **Verify**: exact command and expected result
-   - **Depends on**: earlier task numbers
+4. Write the **plan** to `.claude/plans/<slug>.md` in the plan contract format. Start from the skeleton your caller passed you, which is the output of `plan-check.sh --template`; if none was passed, run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/plan-check.sh" --template`. Each task must be executable by a less capable model without further design decisions:
+   - Header: `Status: DRAFT`, `Approved: no`, `Spec: .claude/specs/<slug>.md`. Status takes DRAFT|APPROVED|IN_PROGRESS|DONE and Approved takes yes|no, but you always write DRAFT and no. Never write `Approved: yes` or an `Override:` line.
+   - `## Tasks` with `### Task N: <title>`, numbered 1..n with no gaps. The first line of each task is `- [ ] Done`.
+   - `Objective:` one sentence.
+   - `Files:` one `- <verb> <repo-relative path>` per line, the verb create|modify|delete|rename|test, written `- rename <old> -> <new>` for a rename. Use `create` only for a path that does not exist yet, and `modify` or `delete` only for a path that exists or that an earlier task creates. At most 6 entries per task: split a larger task. Every backticked repo path in a task must appear in some task's `Files:`.
+   - `Test first:` the failing test to write (name, location, what it asserts). `Test command:` the exact command in one pair of backticks.
+   - `Change:` the precise change, including function signatures and key logic.
+   - `Done when:` `- ` items; write each verify command as ``- run `<command>` and expect <result>``. A command must start with a tool that this repo's `.claude/test-cmd` or `.claude/lint-cmd` uses, or a basic shell tool such as `bash`, `grep` or `jq`; never a bare host runtime the repo only runs in a container.
+   - `Depends on:` earlier task numbers only, or leave it out. `Risk:` low|medium|high, optional.
+   - No placeholders outside backticks: TBD, TODO, `etc.`, `as appropriate`, `similar to Task N`, `handle errors`, `update tests accordingly`.
    - Keep each task to roughly 30 minutes of work or under about 150 changed lines. Split anything larger.
-5. End the plan with a checklist of acceptance criteria that `verify-done` can run.
+5. End the plan with `## Acceptance criteria`, a `- [ ]` checklist that `verify-done` can run. Then run the plan-check command your caller gave you (or `bash "${CLAUDE_PLUGIN_ROOT}/scripts/plan-check.sh" .claude/plans/<slug>.md`) and fix every `error=` and `warning=` line before replying. If you cannot run it, say so in your reply.
 
 ## Clarification check
 

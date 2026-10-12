@@ -6,6 +6,12 @@
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-write-guard.sh\"" }
         ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/implementer-gate.sh\"" }
+        ]
       }
     ],
     "PostToolUse": [
