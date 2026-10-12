@@ -212,6 +212,7 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 ```text
 /dev-flow:spec add rate limiting to the ticket search API
    -> Opus checks 7 ambiguity categories against the code; only a blocking unknown stops to ask you (one message, at most five questions)
+   -> plan-check validates the plan; findings go back to the architect, at most 3 times
    -> review and edit .claude/plans/<slug>.md; answer any question to override its default
    -> reply "ok build", or run /dev-flow:build <slug> yourself
 ```
@@ -230,6 +231,15 @@ Plans and specs live in `.claude/specs/` and `.claude/plans/` (previously under 
 After upgrading to 1.15.0, move your existing `plans` and `specs` folders from `docs/` into `.claude/` so build and the compaction snapshot find them.
 
 In 1.18.0 new feature branches are named `feature/...` instead of `feat/...`. Existing branches are not renamed; if your tooling or CI matches `feat/*`, make it accept `feature/*` too.
+
+**1.19.0 note:** plans written before 1.19.0 are refused by `/dev-flow:build`, because they lack the plan contract (see [Plan contract and plan-check](#plan-contract-and-plan-check)). Fix one by regenerating it with `/dev-flow:spec`, or by adding these four header lines, which include a recorded `Override: all plan` line:
+
+```text
+Status: APPROVED
+Approved: yes
+Spec: .claude/specs/<slug>.md
+Override: all plan: written before the 1.19.0 plan contract
+```
 
 Model pinning per stage is documented in frontmatter but not verified live — see Model routing.
 
@@ -258,6 +268,7 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `stop-gate` | Hook | Runs `.claude/test-cmd` before Claude can finish, retrying up to 3 times before giving up (see below). |
 | `pre-write-guard` | Hook | Gates every change (Write/Edit/MultiEdit, plus Bash commands that look like they write the file directly) to `AGENTS.md` / `CLAUDE.md` / `.claude/rules/*.md`, and refuses edits to a `CLAUDE.md` that only points at `AGENTS.md` (see below). |
 | `pre-compact-snapshot` | Hook | Before compaction, saves the active plan, checklist counts, git branch/counts and BLOCKED lines to `.claude/.devflow-state.json` — no file contents (see below). |
+| `implementer-gate` | Hook | Before an `implementer` dispatch, runs `plan-check.sh` on the plan named in the prompt's `Plan:` line and denies the call unless the plan passes and has `Approved: yes` (see [Implementer gate](#implementer-gate)). |
 | `session-start-restore` | Hook | At session start, injects that snapshot (≤15 lines) if it is under 24 h old. |
 | context7, semble, chrome-devtools, codegraph | MCP | All four bundled in `.mcp.json`, start automatically. CodeGraph additionally needs its binary on PATH (`install.sh` installs it) and a per-repo `codegraph init` for results. |
 
@@ -379,9 +390,109 @@ Add `.claude/.devflow-state.json` to `.gitignore`. It is local state and should 
 
 Verified by running both scripts against a throwaway repo; not yet observed in a live compaction.
 
+### Plan contract and plan-check
+
+`/dev-flow:spec` writes `.claude/plans/<slug>.md` in a fixed format, and `plugins/dev-flow/scripts/plan-check.sh` checks it mechanically. The format has one definition, `plugins/dev-flow/scripts/plan-schema.sh`; `plan-check.sh --template` prints the plan skeleton from it, and that is what `spec-architect` fills in. The checks are structural only: they never judge whether a plan is good.
+
+The header is every line before the first `## ` heading: `Status:` (`DRAFT`, `APPROVED`, `IN_PROGRESS` or `DONE`), `Approved:` (`yes` or `no`), `Spec:` (a repo-relative path that exists), each exactly once, plus optional `Override:` lines. `## Tasks` holds `### Task N: <title>` sections numbered 1..n without gaps. Each starts with a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:`, with optional `Change:`, `Depends on:` and `Risk:`. A `Files:` entry is `- <verb> <repo-relative path>` with the verb `create`, `modify`, `delete`, `rename` (written `- rename <old> -> <new>`) or `test`. A `Done when:` item of the form ``- run `<command>` and expect <result>`` is a verify command. `## Deviations` is appended by the build.
+
+```text
+# Plan: greeting
+
+Status: DRAFT
+Approved: no
+Spec: .claude/specs/greeting.md
+
+## Tasks
+
+### Task 1: Print a greeting
+
+- [ ] Done
+
+Objective: Add a greeting script.
+
+Files:
+- create src/greet.sh
+- test tests/greet.sh
+
+Test first: tests/greet.sh asserts the script prints hello.
+
+Test command: `bash tests/greet.sh`
+
+Done when:
+- run `bash tests/greet.sh` and expect exit 0
+
+Risk: low
+```
+
+Usage:
+
+```text
+bash plugins/dev-flow/scripts/plan-check.sh [--json] [--strict] <repo>/.claude/plans/<slug>.md
+bash plugins/dev-flow/scripts/plan-check.sh --template
+```
+
+The repo root comes from the plan's path (`<root>/.claude/plans/<file>.md`), so a plan inside a worktree is checked against that worktree. `--json` prints one JSON object instead of the lines below (it needs `jq`); `--strict` turns every warning left after overrides into an error; `--template` prints the skeleton.
+
+Output, in this order: `plan=`, `status=`, `approved=`, then one line per finding (`error=<code> task=<N|-> line=<L>: <message>`, `warning=...`, or `overridden=...` with the override's line and reason), then `errors=`, `warnings=`, `overrides=`, `result=ok|fail` and a last `summary=` line. Exit codes: 0 when there are no errors (warnings and overridden findings never fail a non-strict run), 1 when there is at least one error, 2 for a usage problem (`error=usage`, `plan-path`, `plan-missing` or `jq-missing`), which prints `error=` and `summary=` only.
+
+| Code | Severity | Rule |
+|---|---|---|
+| `crlf` | error | a line ends in CR (reported once, at the first) |
+| `header-status` | error | `Status:` is missing, repeated or not in the set |
+| `header-approved` | error | `Approved:` is missing, repeated or not in the set |
+| `header-spec` | error | `Spec:` is missing, repeated, absolute, has a `..` segment or bad characters |
+| `spec-missing` | error | the `Spec:` file does not exist under the root |
+| `blocking-row` | error | a row in the spec's "Assumptions and open questions" table has status `blocking` |
+| `tasks-missing` | error | no `## Tasks` line, or no task under it |
+| `task-heading` | error | a `### ` line in Tasks that is not `### Task <digits>: <title>`, or a `### Task N:` heading outside `## Tasks` (for example after a `## Notes` section), which build would dispatch unvalidated |
+| `task-number` | error | the i-th heading is not `Task i` (gaps, duplicates, reordering) |
+| `checkbox` | error | the first non-blank line of a task is not `- [ ]`, `- [x]` or `- [X]` |
+| `field-missing` | error | a required label is absent |
+| `field-empty` | error | a required label has no content (`Files:` with no entries, `Done when:` with no `- ` item) |
+| `field-duplicate` | error | a label appears twice in a task |
+| `files-entry` | error | a Files line is not `- <verb> <path>` or `- rename <old> -> <new>`, a path has bad characters, or `Files:` has inline text |
+| `files-verb` | error | the verb is not `create`, `modify`, `delete`, `rename` or `test` |
+| `path-absolute` | error | a path starts with `/` or `~` |
+| `path-dotdot` | error | a path has a `..` segment |
+| `path-missing` | error | a `modify`, `delete` or `rename` source does not exist (on disk, or created by an earlier task and not deleted by one) |
+| `path-exists` | error | a `create` or `rename` target already exists |
+| `depends-forward` | error | `Depends on` names this task or a later one |
+| `depends-malformed` | error | `Depends on` is not `none` or a comma-separated list of positive integers |
+| `risk-value` | error | `Risk` is not `low`, `medium` or `high` |
+| `test-command-empty` | error | `Test command:` has no non-empty backticked span |
+| `verify-toolchain` | error | a verify command's first word cannot run in this repo's toolchain (below) |
+| `placeholder` | error | a placeholder outside backticks and fences (below) |
+| `fence-unclosed` | error | a code fence (three backticks or three tildes) opened and never closed, so the rest of the plan is not validated; cannot be overridden |
+| `deviation-line` | error | a `## Deviations` line is not `- Task N: <text>` with an existing N |
+| `override-malformed` | error | an `Override:` line that does not parse, names an unknown or non-overridable code, or has an empty reason |
+| `unlisted-path` | warning | a backticked repo path in a task body that is in no Files block |
+| `too-many-files` | warning | a task has more than 6 Files entries |
+| `override-unused` | warning | an `Override:` line that matches no finding |
+
+Existence checks (`path-missing`, `path-exists`) walk the tasks in order as a virtual file system, so a file created by an earlier task exists for a later one. Ticked tasks skip these checks, which keeps a mid-build re-run green. Placeholders are `TBD` and `TODO` as whole words, plus the phrases `etc.`, `as appropriate`, `similar to task N`, `handle errors` and `update tests accordingly`, outside backticks and code fences; put one in backticks when a plan has to name it. The `## Deviations` section is exempt from the placeholder check (its `- Task N: <text>` shape is still checked), and each deviation is one line. A code fence that is opened and never closed is the error `fence-unclosed`.
+
+The `verify-toolchain` rule: it only runs when `.claude/test-cmd` or `.claude/lint-cmd` exists. Each verify command (the `Test command:` span and every `run` item) is split into segments on `&&`, `||`, `|` and `;`; leading `NAME=value` words are dropped, and the first word of each segment must be in a fixed baseline list (`bash sh cd test [ true false echo printf cat grep awk sed tr cut sort uniq head tail wc diff cmp ls find xargs mkdir rm cp mv touch env jq git`) or be a command word used in `.claude/test-cmd` or `.claude/lint-cmd`. With a `docker compose ...` test-cmd, a bare `php artisan test` is an error and `docker compose exec app php artisan test` passes. The `too-many-files` rule: seven or more Files entries in one task is a warning.
+
+**Overrides.** A false positive is overridden by a header line, written only by you or at your explicit request, never by `spec-architect` or the build to make a plan pass: `Override: <code> task <N>: <reason>`, `Override: <code> plan: <reason>`, with `all` in place of a code to cover every code. A `plan` override matches findings in any task and plan-level ones. Every code can be overridden except `blocking-row` (answer the open question instead), `override-malformed`, `override-unused` and `fence-unclosed`. An overridden finding prints as `overridden=` and is counted in `overrides=`; an override that matches nothing is an `override-unused` warning. Overrides are surfaced every run, in the `/dev-flow:spec` summary, at `/dev-flow:build` step 0, to the `reviewer` (which lists them ahead of its findings) and in the build's final report.
+
+Three gates use the validator:
+
+1. The spec loop: after `spec-architect` returns, `/dev-flow:spec` runs plan-check; findings go back to the architect, for at most 3 revision attempts, and the summary says whether the plan passes or how many errors remain.
+2. `/dev-flow:build` step 0 runs plan-check and refuses on exit 1 or 2. On exit 0 it prints the `warning=` and `overridden=` lines, then sets `Approved: yes` and `Status: IN_PROGRESS` (replying `ok build` or invoking `/dev-flow:build` yourself is the approval). Step 4 ticks a task's checkbox after its verify passes and appends `- Task N: <text>` lines under `## Deviations`; step 7 sets `Status: DONE`. In worktree mode, `Approved: yes`, `Status: IN_PROGRESS` and the final `DONE` are set on the worktree copy (the one named in `Plan:`); the original plan in the main checkout is left unchanged. If a task's verify fails or an implementer replies `BLOCKED`, the build stops and reports: it does not re-dispatch or tick the task (a half-finished task makes plan-check report `path-exists` or `path-missing`, which you resolve). Step 6 re-runs plan-check just before the review, so an override added mid-build reaches the reviewer, and review-fix dispatches carry the same `Plan:` line. A task titled `Manual: ...` is not dispatched: you run it and the result goes into Deviations.
+3. The `implementer-gate` hook, below.
+
+Steps 1 and 2 are instructions to the model, not hooks.
+
+#### Implementer gate
+
+`implementer-gate.sh` is a `PreToolUse` hook on `Agent|Task`. It finds the active plan from the first line of the dispatch prompt that matches `Plan: <path>.md` (build step 3 writes it: repo-relative in branch mode, the absolute worktree copy in worktree mode; a relative path resolves against `CLAUDE_PROJECT_DIR`). It denies the call (exit 2, message on stderr) when the prompt has no `Plan:` line, the plan is missing or fails plan-check, or the output lacks `approved=yes`. It also denies, as it fails closed for the implementer, when `jq` is not on `PATH` and the call mentions the implementer, and when `CLAUDE_PROJECT_DIR` cannot be entered. A finished task that is not ticked can trip `path-exists` on re-validation; the deny message says not to tick a task that is not finished and, if a task's verify failed or the plan changed mid-build, to stop and report to you instead of re-dispatching.
+
+What it matches was observed by the user in a live Claude Code session, version 2.1.287 (the version installed when the observation was recorded): `tool_name` `Agent`, `subagent_type` `dev-flow:implementer`, tool input keys `description`, `prompt` and `subagent_type`. The hook allows every other `subagent_type` (fail open), because failing closed would deny `spec-architect`, `reviewer`, `Explore` and every other subagent call. So if a future Claude Code reports a different string for the implementer, the hook does nothing and only build step 0 gates. The hook is absent in [hookless mode](#managed-settings-hooks-disabled-by-your-organization), where step 0 is the only gate. The user ran the refusal checks (Task 22 of the plan-check plan) in sessions started with `claude --plugin-dir ./plugins/dev-flow` and reported, on 2026-10-11, with a demo plan whose header had `Status: WIP`: the hook denied an `implementer` call naming the failing plan, with a `BLOCKED` message containing `error=header-status`; and `/dev-flow:build` step 0 refused in hook mode and in hookless mode (hooks disabled via `disableAllHooks`). That is the user's report; the Claude Code version for these runs was not recorded. They ran against the `build.md` and gate text from before the review fixes, so the stop-and-report on a failed verify, the worktree handling and the re-run before review are not checked live (see Known limits).
+
 ### Managed settings: hooks disabled by your organization
 
-If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's hooks (pre-write guard, per-edit check, stop gate, compaction snapshot) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
+If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's hooks (pre-write guard, implementer gate, per-edit check, stop gate, compaction snapshot, session-start restore) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
 
 The real fix is for your admin: force-enable dev-flow in managed settings, because hooks belonging to a force-enabled plugin are exempt from `allowManagedHooksOnly`:
 
@@ -398,6 +509,7 @@ Otherwise, dev-flow falls back to **hookless mode**. `/dev-flow:onboard` and `/d
 | pre-write guard | `ask` rules in the shared, committed `.claude/settings.json` for `Edit(AGENTS.md)`, `Edit(CLAUDE.md)`, `Edit(.claude/rules/**)` (+ `deny Edit(/CLAUDE.md)` when it's a pointer), plus a guidance instruction | Claude Code permission prompt on every Write/Edit, for everyone in the repo (people whose hooks run get this on top of the guard); not Bash writes; ignored under `allowManagedPermissionRulesOnly` |
 | per-edit check | `.claude/lint-cmd`, always written in hookless mode, run by `implementer`, `verify-done` and the guidance "Quality gates" section | instruction-level |
 | stop gate | `.claude/test-cmd`, run by `implementer` and `verify-done`, by the build orchestrator for `reviewer` (which passes in the result), and the guidance section | instruction-level; nothing blocks the end of a plain turn |
+| implementer gate | `/dev-flow:build` step 0 runs plan-check and refuses | instruction-level |
 | compaction snapshot | none — compaction is triggered by the harness, so there is nothing for an instruction to hook into; the plan in `.claude/plans/` remains the record | not available |
 
 Hookless mode is weaker: the model can skip an instruction, and only the admin fix above restores the mechanical gates.
@@ -702,7 +814,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 ### Known limits
 
-- Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn, and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
+- Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn (the implementer gate has one user-reported live denial, see Known limits and the Implementer gate section; the other hooks have none), and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
 - CodeGraph and Semble build indexes on first use and can be slow on large repos.
 - The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism and its interaction with Claude Code's stop-hook block cap are tested standalone (not yet inside a live Claude Code stop-hook cycle).
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
@@ -722,6 +834,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - Agent `tools:` lists are allowlists, and an entry that does not resolve is dropped without a warning; only a list where nothing resolves stops the agent launching. In Claude Code 2.1.285 the `implementer`'s `Grep`, `Glob`, `MultiEdit` and `TodoWrite` entries do not resolve (with Bash present, search goes through Bash), so it works with the rest. They stay listed for versions where they exist.
 - 1.17.1 fixed two tool grants: `reviewer` no longer has Bash (it could run `git checkout -- .` or `git reset --hard` on the diff it was reviewing), and `implementer` gained an allowlist (it previously inherited every tool, including web search, subagents and the browser MCP).
 - Worktree mode (`commands/build.md` step 2 and the `git-workflow` skill) is instruction-level and not yet run in a live session, and neither is asking both questions in one `AskUserQuestion` call. Starting from the default branch is only offered on a clean tree, and the skill only offers a worktree on a clean tree, since switching base could mix or lose uncommitted changes and a worktree would leave them behind. The default branch is detected from local refs only (`origin/HEAD`, then `main`, `master`, `develop`), without fetching, so pull it first if it may be stale. After `EnterWorktree`, Claude Code keeps `${CLAUDE_PROJECT_DIR}` on the main checkout, and every dev-flow hook `cd`s there: the stop gate, per-edit checks, compaction snapshot and the guard's approval markers act on the main checkout, not the worktree. The explicit `.claude/test-cmd` and `.claude/lint-cmd` runs in the build and before each commit still cover the worktree. Approving a guarded guidance-file edit from inside a worktree may not work; it fails closed (the guard keeps blocking). The worktree is never removed automatically: run `git worktree remove .claude/worktrees/<slug>` after merging. The build, the `git-workflow` skill and `worktree.sh` ignore `.claude/plans/`, `.claude/specs/` and `.claude/worktrees/` when deciding whether the tree is clean, and a failed copy of the plan or spec into a worktree stops with `error=copy-failed`. The worktree and branch then already exist and the script removes nothing; clean up with `git worktree remove --force <path>` then `git branch -D <branch>`, and retry.
+- The implementer gate matches one exact `subagent_type` string, `dev-flow:implementer`, and allows every other value (fail open); build step 0 and the spec loop are instructions the model can skip, not hooks. The user reported on 2026-10-11 one live observation per mode (hook denial with `error=header-status`, step 0 refusal in hook mode, step 0 refusal in hookless mode) with a `Status: WIP` demo plan; the Claude Code version was not recorded. Those ran on `build.md` and gate text from before the review fixes, so the stop-and-report on a failed verify, worktree handling, the re-run before review, the spec loop of up to 3 attempts, tick and Deviations recording, and a full end-to-end build under the current text are not run live. One observation per mode is not a regression suite. What was not run is not verified. See [Implementer gate](#implementer-gate).
 
 ## Changelog
 

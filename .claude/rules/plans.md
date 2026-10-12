@@ -1,0 +1,23 @@
+---
+paths:
+  - "plugins/dev-flow/scripts/plan-check.sh"
+  - "plugins/dev-flow/scripts/plan-schema.sh"
+  - "plugins/dev-flow/hooks/scripts/implementer-gate.sh"
+  - "plugins/dev-flow/agents/spec-architect.md"
+  - "plugins/dev-flow/commands/spec.md"
+  - "plugins/dev-flow/commands/build.md"
+  - "tests/plan-check.sh"
+  - "tests/implementer-gate.sh"
+  - ".claude/plans/*.md"
+---
+- The plan contract has one definition: `plugins/dev-flow/scripts/plan-schema.sh`. `plan-check.sh` sources it, `plan-check.sh --template` prints the plan skeleton from it, and `tests/plan-check.sh` checks that the filled-in template passes and that this file, `agents/spec-architect.md` and `README.md` repeat its value sets. Change a value there first, then the files the test names.
+- Header (every line before the first `## `): `Status:` DRAFT|APPROVED|IN_PROGRESS|DONE, `Approved:` yes|no, `Spec:` a repo-relative path that exists; optional `Override:` lines.
+- `## Tasks` holds `### Task N: <title>`, numbered 1..n with no gaps. Each task's first line is a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:` (`- ` items; ``- run `<command>` and expect <result>`` items are verify commands), plus optional `Change:`, `Depends on:` (earlier tasks or `none`) and `Risk:` low|medium|high.
+- `Files:` entries are `- <verb> <repo-relative path>` with the verb create|modify|delete|rename|test, written `- rename <old> -> <new>` for a rename; no absolute paths and no `..`; at most 6 entries per task.
+- `## Deviations` is appended by the build orchestrator, one `- Task N: <text>` line per deviation; keep each deviation to one line.
+- Placeholders TBD and TODO and the phrases in `PLAN_PLACEHOLDER_PHRASES` are errors outside backticks and fences; put them in backticks when a plan has to name them. The `## Deviations` section is exempt.
+- A code fence must be closed: an unclosed one hides the rest of the plan from the validator (`fence-unclosed`, not overridable). `verify-toolchain` and `unlisted-path` are heuristics: write verify commands with the tool as the first word (`bash x`, not `(cd sub && bash x)` or `FOO='a b' cmd`), and use `Override:` only for a real false positive.
+- `Override: <code|all> task <N>: <reason>` and `Override: <code|all> plan: <reason>` are written only by the user or at the user's explicit request, never to make a plan pass. Every run prints them as `overridden=` lines and the build passes them to the reviewer.
+- Structural checks only: never add a rule that scores or judges plan quality; that is the plan-reviewer's job.
+- A new finding code needs an entry in `PLAN_CODES`, a defect fixture in `tests/plan-check.sh` and a row in the README code table.
+- Keep `plan-check.sh` working on bash 3.2 and BWK awk: no associative arrays or `mapfile` in bash; no `asort`, `IGNORECASE`, `\b`, regex intervals or `match()` capture arrays in awk; pass schema values to awk through `ENVIRON`, not `-v`.

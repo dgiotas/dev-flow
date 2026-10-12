@@ -21,11 +21,13 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 - `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`, `threat-modeler`); frontmatter `model:` pins the model per stage.
 - `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`, `/dev-flow:threat-model`); same `model:` frontmatter.
 - `plugins/dev-flow/skills/*/SKILL.md` — the nine dev skills; each is one directory with one `SKILL.md`.
-- `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PostToolUse` (post-edit-check), `Stop` (stop-gate), `PreCompact` (pre-compact-snapshot) and `SessionStart` (session-start-restore) to scripts in `hooks/scripts/`.
-- `plugins/dev-flow/hooks/scripts/*.sh` — the five hooks, pure bash + jq.
+- `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PreToolUse` on `Agent|Task` (implementer-gate), `PostToolUse` (post-edit-check), `Stop` (stop-gate), `PreCompact` (pre-compact-snapshot) and `SessionStart` (session-start-restore) to scripts in `hooks/scripts/`.
+- `plugins/dev-flow/hooks/scripts/*.sh` — the six hooks, pure bash + jq.
 - `plugins/dev-flow/scripts/guidance-target.sh` — detects whether `AGENTS.md` or `CLAUDE.md` is canonical; used by `setup-rules` and `init-rules`.
 - `plugins/dev-flow/scripts/hooks-policy.sh` — reports whether on-disk managed settings block hooks (`allowManagedHooksOnly`/`disableAllHooks`) or project permission rules; used by `init-hooks`/`onboard` step 0 to enter hookless mode after a dead guard probe.
 - `plugins/dev-flow/scripts/security-targets.sh` — fail-closed allow/refuse decision for a target URL and requested load against the committed `.claude/security-targets.json`; tested by `tests/security-targets.sh`.
+- `plugins/dev-flow/scripts/plan-check.sh` — deterministic structural validator for `.claude/plans/<slug>.md` (exit 0 ok, 1 findings, 2 usage; `--json`, `--strict`, `--template`), run by `/dev-flow:spec`, `/dev-flow:build` step 0 and the implementer-gate hook; tested by `tests/plan-check.sh`.
+- `plugins/dev-flow/scripts/plan-schema.sh` — the only definition of the plan contract's value sets and finding codes, sourced by `plan-check.sh`; see `.claude/rules/plans.md`.
 - `plugins/dev-flow/scripts/worktree.sh` — creates `.claude/worktrees/<slug>` on a new branch from a given start point (`HEAD` or the default branch) and copies the matching plan and spec into it when present, for the worktree mode of `/dev-flow:build` and the `git-workflow` skill; tested by `tests/worktree.sh`.
 - `plugins/dev-flow/scripts/default-branch.sh` — detects the default branch from local refs (`origin/HEAD`, then `main`/`master`/`develop`, never fetching) and whether it is checked out, for the base question in `/dev-flow:build` and the `git-workflow` skill; tested by `tests/default-branch.sh`.
 - `plugins/dev-flow/scripts/branch-name.sh` — builds a new branch name `[<prefix>/]<type>/<name>` from a type (`feature`, `fix`, `chore`, `refactor`), a slug and the optional committed one-line `.claude/branch-prefix`, checked with `git check-ref-format`, for `/dev-flow:build` and the `git-workflow` skill; tested by `tests/branch-name.sh`.
@@ -41,6 +43,7 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 
 - Hook scripts follow a strict stdin-JSON-in / exit-code-out contract — see `.claude/rules/hook-scripts.md` before touching `hooks/scripts/*.sh`.
 - Skill `description` frontmatter drives auto-invocation, not just documentation — see `.claude/rules/skills.md` before touching `skills/*/SKILL.md`.
+- Plans follow the contract in `.claude/rules/plans.md`; change the contract in `plugins/dev-flow/scripts/plan-schema.sh` first, and keep `tests/plan-check.sh` green.
 - Frontmatter in every `skills/*/SKILL.md`, `commands/*.md` and `agents/*.md` must be valid YAML, or GitHub and markdown viewers fail to render it. Single-quote a `description` that contains `: ` and an `argument-hint` that starts with `[...]` (`<...>` hints are fine). `bash .claude/test-cmd` parses every `.md` frontmatter and catches this.
 - Agent/command frontmatter `model:` (`opus`/`sonnet`/`haiku`/a model id/`inherit`) pins the model for that stage regardless of what model is running the parent session — this is the mechanism behind the Opus-plans/Sonnet-builds routing described in the README.
 - `AGENTS.md`, `CLAUDE.md` and `.claude/rules/*.md` are gated by `pre-write-guard.sh`: any `Write`/`Edit`/`MultiEdit` to an *existing* one of these is blocked until the user approves the exact diff and a single-use marker is created. This applies here too.

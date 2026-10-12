@@ -15,6 +15,7 @@ The caller's prompt contains:
 - the diff of the work against its base, including new untracked files
 - the commit log for the work
 - the output and exit code of `.claude/test-cmd`, or a note that none exists
+- the plan-check output re-run by the build just before the review (including every `overridden=` and `warning=` line) and the plan's `## Deviations` section
 
 If the diff is missing, say so and stop: do not review from memory or guess what changed. If the diff was too large to pass in full and you were given a file list instead, Read those files.
 
@@ -31,5 +32,7 @@ If the diff is missing, say so and stop: do not review from memory or guess what
 4. Use the test-command result you were given. A non-zero exit is a finding. If no result was passed in, say the tests were not run rather than assuming they pass.
 
 ## Output
+
+Start with **Plan-check overrides and deviations**: every `overridden=` line and every `## Deviations` entry, each with one sentence on whether the diff shows it was justified, or "none". An override that hid a real defect, or a deviation that contradicts the spec, is also a finding below.
 
 A list of findings, most severe first. Each: `severity (blocker/major/minor)`, `path:line`, the problem, a concrete failure scenario, and a suggested fix. Then a verdict: `APPROVE`, `APPROVE WITH MINOR`, or `CHANGES REQUIRED`. Do not pad with praise or style nitpicks the linter already covers.
