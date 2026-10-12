@@ -151,5 +151,35 @@ rx nosurface-says-so-plain "$sg/says-so-regex.md" "$tmp/msg-plain" fail
 rx nosurface-says-so-findings "$sg/says-so-regex.md" "$tmp/msg-findings" fail
 if [ ! -e "$sg/no-file.md" ]; then pass "nosurface-no-file-removed"; else bad "nosurface-no-file-removed"; fi
 
+printf '%s' '{"subagent_type":"dev-flow:plan-reviewer","prompt":"x"}' > "$tmp/agent-planrev"
+printf '%s' '{"subagent_type":"dev-flow:reviewer","prompt":"x"}' > "$tmp/agent-diffrev"
+cat > "$tmp/msg-revise.md" <<'EOF'
+REVISE
+1. [symbols] src/names.js:3 — Task 3: badge calls `displayName(user)`, but the real signature is `displayName(first, last, title)`. If shipped as written: badge returns "Hello, [object Object]!". Fix: call displayName(user.first, user.last, user.title).
+EOF
+sed 's#src/names.js:3#src/names.js:12#' "$tmp/msg-revise.md" > "$tmp/msg-revise-wrongline.md"
+sed 's#displayName(first, last, title)#the three-argument form#' "$tmp/msg-revise.md" > "$tmp/msg-revise-nosig.md"
+printf '%s\n' PASS > "$tmp/msg-pass.md"
+
+ag="$ev/plan-review-arity/graders"
+inp arity-agent-fired "$ag/agent-fired.md" input_match "$tmp/agent-planrev" pass
+inp arity-agent-diffrev "$ag/agent-fired.md" input_match "$tmp/agent-diffrev" fail
+rx arity-verdict-revise "$ag/verdict.md" "$tmp/msg-revise.md" pass
+rx arity-verdict-pass "$ag/verdict.md" "$tmp/msg-pass.md" fail
+rx arity-cites-good "$ag/cites-signature.md" "$tmp/msg-revise.md" pass
+rx arity-cites-wrongline "$ag/cites-signature.md" "$tmp/msg-revise-wrongline.md" fail
+rx arity-cites-nosig "$ag/cites-signature.md" "$tmp/msg-revise-nosig.md" fail
+
+printf '%s\n' 'Plan review result:' '' 'PASS' > "$tmp/msg-pass-preamble.md"
+
+pg="$ev/plan-review-pass/graders"
+inp pass-agent-fired "$pg/agent-fired.md" input_match "$tmp/agent-planrev" pass
+inp pass-agent-diffrev "$pg/agent-fired.md" input_match "$tmp/agent-diffrev" fail
+rx pass-verdict-pass "$pg/verdict.md" "$tmp/msg-pass.md" pass
+rx pass-verdict-preamble "$pg/verdict.md" "$tmp/msg-pass-preamble.md" pass
+rx pass-verdict-revise "$pg/verdict.md" "$tmp/msg-revise.md" fail
+rx pass-no-revise-pass "$pg/no-revise.md" "$tmp/msg-pass.md" pass
+rx pass-no-revise-revise "$pg/no-revise.md" "$tmp/msg-revise.md" fail
+
 [ "$fail" = 0 ] && echo ALL-PASS
 exit "$fail"

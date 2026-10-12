@@ -18,7 +18,7 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 
 - `.claude-plugin/marketplace.json` — marketplace manifest, lists the one plugin at `./plugins/dev-flow`.
 - `plugins/dev-flow/.claude-plugin/plugin.json` — plugin manifest; `version` here is what `/plugin update` picks up.
-- `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `reviewer`, `spec-architect`, `threat-modeler`); frontmatter `model:` pins the model per stage.
+- `plugins/dev-flow/agents/*.md` — subagents (`implementer`, `plan-reviewer`, `reviewer`, `spec-architect`, `threat-modeler`); frontmatter `model:` pins the model per stage.
 - `plugins/dev-flow/commands/*.md` — slash commands (`/dev-flow:spec`, `/dev-flow:build`, `/dev-flow:init-hooks`, `/dev-flow:init-rules`, `/dev-flow:init-codegraph`, `/dev-flow:onboard`, `/dev-flow:threat-model`); same `model:` frontmatter.
 - `plugins/dev-flow/skills/*/SKILL.md` — the nine dev skills; each is one directory with one `SKILL.md`.
 - `plugins/dev-flow/hooks/hooks.json` — wires `PreToolUse` (pre-write-guard), `PreToolUse` on `Agent|Task` (implementer-gate), `PostToolUse` (post-edit-check), `Stop` (stop-gate), `PreCompact` (pre-compact-snapshot) and `SessionStart` (session-start-restore) to scripts in `hooks/scripts/`.

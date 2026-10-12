@@ -213,6 +213,7 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 /dev-flow:spec add rate limiting to the ticket search API
    -> Opus checks 7 ambiguity categories against the code; only a blocking unknown stops to ask you (one message, at most five questions)
    -> plan-check validates the plan; findings go back to the architect, at most 3 times
+   -> Opus plan-reviewer checks the plan against the spec and the code; REVISE goes back to the architect, at most 2 times, then to you
    -> review and edit .claude/plans/<slug>.md; answer any question to override its default
    -> reply "ok build", or run /dev-flow:build <slug> yourself
 ```
@@ -221,7 +222,7 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 | Command | Use it when | What it does |
 |---|---|---|
-| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. |
+| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. Opus `plan-reviewer` then checks the plan against the spec and the code ([Plan review](#plan-review)). |
 | `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on Sonnet `implementer`, review on Opus `reviewer`. |
 | `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet asks branch (default) or worktree and whether to start from the current (default) or the default branch, runs tasks via `implementer` there, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
 | `/dev-flow:onboard` | first time in a repo | CodeGraph index, then guidance file + rules, then verified hook commands, pausing at every guarded write. |
@@ -252,6 +253,7 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `/dev-flow:init-codegraph` | Command | Builds/refreshes the local CodeGraph index for this repo. |
 | `/dev-flow:threat-model [scope]` | Command | Maps the API surface to OWASP API Top 10 / CWE with cited evidence via `threat-modeler`; saves `docs/threats/<slug>.md` for review. Report-only. |
 | `spec-architect` (Opus) | Agent | Investigates, resolves ambiguities, writes spec and plan. |
+| `plan-reviewer` (Opus) | Agent | Judges a plan that passed plan-check against its spec and the code it touches; replies `PASS` or `REVISE` with cited findings. Read-only allowlist (Read, Grep, Glob, codegraph). |
 | `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. Tool allowlist: read, edit, write, Bash, codegraph and context7; no web fetch or search, no subagents, no semble or browser tools. |
 | `reviewer` (Opus) | Agent | Diff review against spec. No shell or file-writing tools (Read, Grep, Glob, codegraph), so it cannot change the tree or git state; `/dev-flow:build` passes in the diff, commit log and test-command result. |
 | `threat-modeler` (Opus) | Agent | Read-only and offline (no file-writing, shell or web tools); returns the threat model as text. |
@@ -392,7 +394,7 @@ Verified by running both scripts against a throwaway repo; not yet observed in a
 
 ### Plan contract and plan-check
 
-`/dev-flow:spec` writes `.claude/plans/<slug>.md` in a fixed format, and `plugins/dev-flow/scripts/plan-check.sh` checks it mechanically. The format has one definition, `plugins/dev-flow/scripts/plan-schema.sh`; `plan-check.sh --template` prints the plan skeleton from it, and that is what `spec-architect` fills in. The checks are structural only: they never judge whether a plan is good.
+`/dev-flow:spec` writes `.claude/plans/<slug>.md` in a fixed format, and `plugins/dev-flow/scripts/plan-check.sh` checks it mechanically. The format has one definition, `plugins/dev-flow/scripts/plan-schema.sh`; `plan-check.sh --template` prints the plan skeleton from it, and that is what `spec-architect` fills in. The checks are structural only: they never judge whether a plan is good. Whether a plan is right is judged by `plan-reviewer`; see [Plan review](#plan-review).
 
 The header is every line before the first `## ` heading: `Status:` (`DRAFT`, `APPROVED`, `IN_PROGRESS` or `DONE`), `Approved:` (`yes` or `no`), `Spec:` (a repo-relative path that exists), each exactly once, plus optional `Override:` lines. `## Tasks` holds `### Task N: <title>` sections numbered 1..n without gaps. Each starts with a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:`, with optional `Change:`, `Depends on:` and `Risk:`. A `Files:` entry is `- <verb> <repo-relative path>` with the verb `create`, `modify`, `delete`, `rename` (written `- rename <old> -> <new>`) or `test`. A `Done when:` item of the form ``- run `<command>` and expect <result>`` is a verify command. `## Deviations` is appended by the build.
 
@@ -617,6 +619,31 @@ The result is the spec's "Assumptions and open questions" table. `/dev-flow:buil
 
 The check lives in `agents/spec-architect.md`, because settling categories from the code needs the Opus investigation. Relaying questions lives in `commands/spec.md`, because a subagent cannot talk to you mid-run. It is not a separate skill: it has one user, and a skill would auto-fire on unrelated vague requests. Adapted from the deep-interview skill in [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) (MIT); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+### Plan review
+
+`plan-reviewer` is an Opus subagent that judges a plan against its spec and the code before any code is written.
+
+- **When it runs.** `/dev-flow:spec` step 4, only after plan-check exits 0. The top-level session dispatches it, never `spec-architect`, so it works where a subagent cannot spawn subagents.
+- **The seven checks.**
+  - `coverage`: every acceptance criterion and goal in the spec maps to a task whose Test first or Done when exercises it.
+  - `executable`: no task leaves a design decision open.
+  - `test-first`: the test fails before the change, for the reason the task targets.
+  - `ordering`: task order and `Depends on` match the real code dependencies.
+  - `symbols`: every referenced symbol and path exists with the name, arity, parameter order and return shape the task assumes.
+  - `scope`: no task goes beyond the spec or touches a stated non-goal.
+  - `risk`: money, auth, sessions, secrets, migrations and data deletion tasks have a rollback step or a failure-path test.
+- **No overlap with plan-check.** It never re-checks plan-check rules, and the duplication audit found no rule to move into plan-check.
+- **Reply contract.** `PASS`, or `REVISE` followed by lines of the form `N. [check] path:line — Task N: ... If shipped as written: ... Fix: ...`.
+- **The loop.** The architect fixes each finding or writes `Disputed N: <reason>`, plan-check re-runs, and the reviewer looks again. At most 2 revisions, so at most 3 Opus reviews; then the summary escalates the findings under `Plan review: unresolved`.
+- **Advisory.** The verdict does not stop you replying `ok build`, and `/dev-flow:build` does not gate on it.
+- **Code lookup.** codegraph when `.codegraph/` exists, otherwise Grep and Read.
+- **Cost.** Always-on: one agent description. On invoke: the longer spec command and one to three Opus reviews per planning round.
+
+| Claim | How it is enforced | Holds in hookless mode? |
+|---|---|---|
+| plan-reviewer cannot write files or run commands | `tools:` allowlist (Read, Grep, Glob, codegraph) | yes, mechanical |
+| the review loop and its cap | command instruction in `commands/spec.md` | instruction-level |
+
 ### Threat modelling
 
 `/dev-flow:threat-model [scope]` maps a repo's API surface to the OWASP API Security Top 10 and the CWE classes that apply. The data flow:
@@ -646,12 +673,19 @@ These are an agent and a command, not hooks, so threat modelling works unchanged
 
 ### Evals
 
-Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model src` against a generated fixture repo:
+Six billed cases live under `plugins/dev-flow/evals/`. Four run `/dev-flow:threat-model src` against a generated fixture repo:
 
 - `threat-bola`: a handler fetches a record by id with no owner check; the model must report a BOLA (API1) finding.
 - `threat-no-fp`: the same shape with an owner check; no high-severity BOLA finding may appear.
 - `threat-no-surface`: a repo with no network surface; the command must say so.
 - `threat-unverified`: authorization is delegated to a gateway the repo does not show; API1 must be marked unverified, name the gateway, and not be reported as verified.
+
+Two dispatch `plan-reviewer` directly on a seeded spec, plan and code; they do not run `/dev-flow:spec`, whose architect would write its own plan:
+
+- `plan-review-arity`: Task 3 calls `displayName(user)` while the function is `displayName(first, last, title)`; the reply must be `REVISE` and cite the signature at line 3.
+- `plan-review-pass`: the same fixture with a correct Task 3; the reply must be `PASS` with no findings.
+
+The without-plugin arm can review a plan on its own, so these cases may show a small delta.
 
 **How to run.** The only supported invocation is `bash ci/eval-run.sh <pr|nightly> <out-dir>`. It is billed, so run it only with approval. It wraps `claude plugin eval` with flags that each matter:
 
@@ -672,7 +706,7 @@ Four billed cases under `plugins/dev-flow/evals/` run `/dev-flow:threat-model sr
 
 **Falsifiability:** a case whose without-plugin arm passes measures nothing. One nightly run (2026-10-10, 3 runs per arm) found none: mean Δ 0.92, with scores with/without of 0.92/0 (`threat-bola`), 0.92/0 (`threat-no-fp`), 1.00/0.17 (`threat-no-surface`) and 1.00/0 (`threat-unverified`). In one of `threat-no-surface`'s three baseline runs `says-so-regex` passed, so a baseline can say "no surface" by luck. The baseline cannot run `/dev-flow:threat-model`, so a large Δ shows the plugin does something, not that its output is good. This is one sample.
 
-**MCP servers in evals:** they do not start (there is no `evals/mocks/`). The fixtures have no `.codegraph/`, so threat-modeler takes its Grep/Glob path, which is the shipped behaviour on an unindexed repo. The indexed path is not covered by evals.
+**MCP servers in evals:** they do not start (there is no `evals/mocks/`). The fixtures have no `.codegraph/`, so threat-modeler takes its Grep/Glob path (and `plan-reviewer` its Grep and Read path), which is the shipped behaviour on an unindexed repo. The indexed path is not covered by evals.
 
 **1.18.1 note:** earlier eval runs, if any, used no documented invocation. Without `--scaffold` and `--allow-tools Write Bash` they graded an empty workspace in which the command could not write its file.
 
@@ -726,6 +760,7 @@ Nothing in this release calls the validator yet: it is the gate the planned secu
 | Stage | Model |
 |---|---|
 | `/dev-flow:spec` and `spec-architect` | Opus |
+| `plan-reviewer` | Opus |
 | `/dev-flow:build` orchestration and `implementer` | Sonnet |
 | `reviewer` | Opus |
 | `/dev-flow:threat-model` and `threat-modeler` | Sonnet orchestrates; Opus models |
@@ -744,7 +779,7 @@ Agent-level `model:` pins each stage even if the session started on another mode
 
 So `ok build` saves you retyping the slug and slash command, at the cost of the orchestration chatter running on the pricier model. The coding itself is Sonnet either way, since that's pinned on the `implementer` agent regardless of who invoked it. `/dev-flow:spec` says this out loud before proceeding. This depends on Claude Code actually pinning a command's model on explicit invocation, as its frontmatter documents — I haven't verified that live in this sandbox (same caveat as the model-routing section below).
 
-Also: `spec-architect`, `implementer` and `reviewer` are subagents. A subagent can spawn further subagents only when its `tools:` list includes `Agent` (checked live on Claude Code 2.1.285), and none of these three lists it, so they do not. The orchestrator is always the top-level session, never a subagent, so the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here.
+Also: `spec-architect`, `plan-reviewer`, `implementer` and `reviewer` are subagents. A subagent can spawn further subagents only when its `tools:` list includes `Agent` (checked live on Claude Code 2.1.285), and none of these four lists it, so they do not. `/dev-flow:spec` dispatches `plan-reviewer` itself rather than through `spec-architect`. The orchestrator is always the top-level session, never a subagent, so the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here.
 
 ### Memory (optional)
 
@@ -806,14 +841,15 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 **A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
 
-**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 15 (9 skills + the 6 commands), Agents 3, Hooks 5 (PreToolUse, PostToolUse, Stop, PreCompact, SessionStart), MCP servers 4.
+**Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 16 (9 skills + the 7 commands), Agents 5, Hooks 5 (PreToolUse, PostToolUse, Stop, PreCompact, SessionStart), MCP servers 4.
 
-**Context cost.** `claude plugin details dev-flow` reports roughly **1,875 always-on tokens** per session for the whole plugin, with each skill's body loaded only when it fires. Worth checking yourself if you stack several plugins.
+**Context cost.** `claude plugin details dev-flow` reported **~2,257 always-on tokens** per session for 1.19.0 (Claude Code 2.1.287, 2026-10-12), with each skill's body loaded only when it fires. 1.20.0 adds the `plan-reviewer` description to that; its measured delta is not recorded here yet. Worth checking yourself if you stack several plugins.
 
 **CodeGraph tools return nothing.** The repo has no index — run `/dev-flow:init-codegraph` (or `codegraph init`). If a duplicate `codegraph` server appears alongside `plugin:dev-flow:codegraph` from a previous global install, remove it: `claude mcp remove codegraph`.
 
 ### Known limits
 
+- plan-reviewer findings are model judgement and advisory (`/dev-flow:build` does not gate on them); the review loop and its 2-revision cap are command instructions; the loop inside `/dev-flow:spec` has not been run live; the agent is checked only by the two synthetic eval cases and by the offline test of its frontmatter and wiring.
 - Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn (the implementer gate has one user-reported live denial, see Known limits and the Implementer gate section; the other hooks have none), and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
 - CodeGraph and Semble build indexes on first use and can be slow on large repos.
 - The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism and its interaction with Claude Code's stop-hook block cap are tested standalone (not yet inside a live Claude Code stop-hook cycle).
