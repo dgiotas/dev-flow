@@ -843,7 +843,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 **Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 16 (9 skills + the 7 commands), Agents 5, Hooks 5 (PreToolUse, PostToolUse, Stop, PreCompact, SessionStart), MCP servers 4.
 
-**Context cost.** `claude plugin details dev-flow` reported **~2,257 always-on tokens** per session for 1.19.0 (Claude Code 2.1.287, 2026-10-12), with each skill's body loaded only when it fires. 1.20.0 adds the `plan-reviewer` description to that; its measured delta is not recorded here yet. Worth checking yourself if you stack several plugins.
+**Context cost.** `claude plugin details dev-flow` reported **~2,257 always-on tokens** per session for 1.19.0 (Claude Code 2.1.287, 2026-10-12), with each skill's body loaded only when it fires. 1.20.0 reports **~2,331** (+74, the `plan-reviewer` description). Worth checking yourself if you stack several plugins.
 
 **CodeGraph tools return nothing.** The repo has no index — run `/dev-flow:init-codegraph` (or `codegraph init`). If a duplicate `codegraph` server appears alongside `plugin:dev-flow:codegraph` from a previous global install, remove it: `claude mcp remove codegraph`.
 
