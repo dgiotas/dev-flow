@@ -5,8 +5,6 @@ description: Fix a bug with a reproducing test first, a root-cause explanation, 
 
 # Fix a bug: RED, root cause, GREEN, gate
 
-If the superpowers plugin is installed, use its `systematic-debugging` and `test-driven-development` skills for the detailed method. This skill defines the order and the exit criteria.
-
 ## Procedure
 
 1. **Reproduce.** Get the exact failing input, error, or stack trace. If you cannot reproduce it, say so and ask for what is missing. Do not guess-fix.

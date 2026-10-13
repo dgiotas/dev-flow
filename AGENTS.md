@@ -38,8 +38,8 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 - `tests/*.sh` — repo-only behavioural test suites (not shipped in the plugin), run by `.claude/test-cmd`.
 - `plugins/dev-flow/evals/` — `claude plugin eval` cases (billed; run locally only with approval, via `ci/eval-run.sh`; CI runs them per the workflow); `results/` is gitignored.
 - `plugins/dev-flow/templates/` — stack rule templates (`rules/*.md`) and containerised hook-command examples (`*.docker.example`).
-- `install.sh` — colleague onboarding script (installs Superpowers + dev-flow, optional memory/powerline); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`; defaults to the dgiotas/dev-flow GitHub source when piped (curl | bash); DEV_FLOW_VERSION pins a dev-flow--v<ver> tag.
-- `uninstall.sh` — removes dev-flow (opt-in `--remove-tools` / `--remove-superpowers`); `curl | bash`-safe like `install.sh`.
+- `install.sh` — colleague onboarding script (installs dev-flow + CodeGraph); on a TTY it shows an interactive component checklist and coloured output, degrading to plain non-interactive output under `-y`/CI/piped input/`--no-color`; defaults to the dgiotas/dev-flow GitHub source when piped (curl | bash); DEV_FLOW_VERSION pins a dev-flow--v<ver> tag; tested by `tests/install.sh`.
+- `uninstall.sh` — removes dev-flow (opt-in `--remove-tools` for the CodeGraph binary); `curl | bash`-safe like `install.sh`; tested by `tests/uninstall.sh`.
 
 ## Conventions
 
