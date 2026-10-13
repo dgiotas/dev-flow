@@ -8,13 +8,18 @@ paths:
   - "plugins/dev-flow/commands/build.md"
   - "tests/plan-check.sh"
   - "tests/implementer-gate.sh"
+  - "plugins/dev-flow/scripts/plan-scope.sh"
+  - "plugins/dev-flow/scripts/plan-edit-check.sh"
+  - "plugins/dev-flow/agents/implementer.md"
+  - "tests/plan-scope.sh"
+  - "tests/plan-edit-check.sh"
   - ".claude/plans/*.md"
 ---
 - The plan contract has one definition: `plugins/dev-flow/scripts/plan-schema.sh`. `plan-check.sh` sources it, `plan-check.sh --template` prints the plan skeleton from it, and `tests/plan-check.sh` checks that the filled-in template passes and that this file, `agents/spec-architect.md` and `README.md` repeat its value sets. Change a value there first, then the files the test names.
 - Header (every line before the first `## `): `Status:` DRAFT|APPROVED|IN_PROGRESS|DONE, `Approved:` yes|no, `Spec:` a repo-relative path that exists; optional `Override:` lines.
 - `## Tasks` holds `### Task N: <title>`, numbered 1..n with no gaps. Each task's first line is a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:` (`- ` items; ``- run `<command>` and expect <result>`` items are verify commands), plus optional `Change:`, `Depends on:` (earlier tasks or `none`) and `Risk:` low|medium|high.
 - `Files:` entries are `- <verb> <repo-relative path>` with the verb create|modify|delete|rename|test, written `- rename <old> -> <new>` for a rename; no absolute paths and no `..`; at most 6 entries per task.
-- `## Deviations` is appended by the build orchestrator, one `- Task N: <text>` line per deviation; keep each deviation to one line.
+- Plan writes have owners. The implementer ticks its own task's checkbox, adds the paths it touched to its own `Files:` block and appends its own `- Task N: <text>` lines to `## Deviations`, one line per deviation. The build writes only the `Status:` and `Approved:` header lines, `Manual:` task entries and, if an implementer replied BLOCKED without writing it, the BLOCKED line. `- Task N: BLOCKED: <reason>` under `## Deviations` is an unresolved escalation (`PLAN_BLOCKED`): the user clears it by rewriting it as `- Task N: RESOLVED: <decision>`. plan-check prints `open=` and `blocked=` lines for it, and `plugins/dev-flow/scripts/plan-edit-check.sh` enforces the write boundary.
 - Placeholders TBD and TODO and the phrases in `PLAN_PLACEHOLDER_PHRASES` are errors outside backticks and fences; put them in backticks when a plan has to name them. The `## Deviations` section is exempt.
 - A code fence must be closed: an unclosed one hides the rest of the plan from the validator (`fence-unclosed`, not overridable). `verify-toolchain` and `unlisted-path` are heuristics: write verify commands with the tool as the first word (`bash x`, not `(cd sub && bash x)` or `FOO='a b' cmd`), and use `Override:` only for a real false positive.
 - `Override: <code|all> task <N>: <reason>` and `Override: <code|all> plan: <reason>` are written only by the user or at the user's explicit request, never to make a plan pass. Every run prints them as `overridden=` lines and the build passes them to the reviewer.

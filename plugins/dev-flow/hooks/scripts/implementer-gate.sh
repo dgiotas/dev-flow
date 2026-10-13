@@ -8,7 +8,8 @@
 # It allows every subagent_type except the one it gates (fail open, so other
 # agents keep working; build step 0 is the instruction-level backstop). For the
 # implementer it denies on every uncertain case: no jq, no plan line, a plan that
-# is missing, failing or unapproved.
+# is missing, failing or unapproved. It also denies while the plan has an
+# unresolved BLOCKED deviation, so a BLOCKED task halts the build.
 set -u
 input=$(cat)
 checker="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/plan-check.sh"
@@ -48,4 +49,6 @@ out=$(bash "$checker" "$plan" 2>&1); rc=$?
 [ "$rc" = 0 ] || deny "$plan does not pass plan-check (exit $rc). Do NOT tick a task that is not finished. If a task's verify failed or the plan changed mid-build, stop and report to the user instead of re-dispatching." "$(printf '%s\n' "$out" | tail -n 40)"
 
 printf '%s\n' "$out" | grep -qx 'approved=yes' || deny "$plan is not approved: /dev-flow:build sets Approved: yes after plan-check passes."
+b=$(printf '%s\n' "$out" | grep '^blocked=')
+[ -z "$b" ] || deny "$plan has an unresolved BLOCKED entry, so the build halts here. Report it to the user; the user resolves it by rewriting the line as \"- Task N: RESOLVED: <decision>\" and runs the build again." "$b"
 exit 0

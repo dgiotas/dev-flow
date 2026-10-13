@@ -39,6 +39,8 @@ Done when:
 PLAN
 sed 's/^Approved: yes$/Approved: no/' "$P/.claude/plans/ok.md" > "$P/.claude/plans/draft.md"
 sed 's/^Status: IN_PROGRESS$/Status: WIP/' "$P/.claude/plans/ok.md" > "$P/.claude/plans/bad.md"
+{ cat "$P/.claude/plans/ok.md"; printf '\n## Deviations\n\n- Task 1: BLOCKED: needs a schema decision\n'; } > "$P/.claude/plans/blocked.md"
+sed 's/BLOCKED:/RESOLVED:/' "$P/.claude/plans/blocked.md" > "$P/.claude/plans/resolved.md"
 
 # run <label> <want rc> <want stderr substring or empty> <tool_name> <subagent_type> <prompt> [project dir]
 run() {
@@ -66,6 +68,8 @@ run missing-plan 2 'error=plan-missing' Agent "$imp" 'Plan: .claude/plans/nope.m
 run failing 2 'error=header-status' Agent "$imp" 'Plan: .claude/plans/bad.md'
 run draft 2 'is not approved' Agent "$imp" 'Plan: .claude/plans/draft.md'
 run approved 0 '' Agent "$imp" 'Plan: .claude/plans/ok.md'
+run blocked 2 'unresolved BLOCKED' Agent "$imp" 'Plan: .claude/plans/blocked.md'
+run resolved 0 '' Agent "$imp" 'Plan: .claude/plans/resolved.md'
 run task-tool 2 'error=header-status' Task "$imp" 'Plan: .claude/plans/bad.md'
 run mid-prompt 0 '' Agent "$imp" "$(printf 'Task 1\nPlan: .claude/plans/ok.md')"
 run absolute 0 '' Agent "$imp" "Plan: $P/.claude/plans/ok.md" "$tmp"

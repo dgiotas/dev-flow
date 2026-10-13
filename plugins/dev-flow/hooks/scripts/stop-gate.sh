@@ -7,6 +7,10 @@
 # consecutive stop-hook continuations, counted across all Stop hooks. So the gate counts
 # continuations from stop_hook_active in .claude/.stop-gate-state ("<failures> <continuations>"),
 # keeps N below that cap, and gives up with the banner rather than make the cap-th continuation.
+#
+# Plan check: a .claude/plans/*.md with "Status: IN_PROGRESS" that still has open tasks or
+# unresolved BLOCKED entries (per plan-check.sh) also blocks stopping, on the same counter and
+# caps as a failing test-cmd. With no .claude/test-cmd the gate runs only for such a plan.
 set -u
 # num DIGITS: decimal value with leading zeros stripped (no octal); over 6 digits reads as 999999 so it can't overflow.
 num() { v=${1#"${1%%[!0]*}"}; v=${v:-0}; [ ${#v} -gt 6 ] && v=999999; echo "$v"; }
@@ -16,7 +20,9 @@ active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
 cmd_file=".claude/test-cmd"
-[ -f "$cmd_file" ] || exit 0
+checker="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/plan-check.sh"
+plans=$(grep -lx 'Status: IN_PROGRESS' .claude/plans/*.md 2>/dev/null)
+[ -f "$cmd_file" ] || [ -n "$plans" ] || exit 0
 
 # Skip if nothing changed (pure Q&A turns shouldn't trigger a test run).
 changed=yes
@@ -71,10 +77,30 @@ fi
 cap_label="harness cap $harness"
 [ "$harness" -eq 0 ] && cap_label="harness cap off"
 
-out=$(bash "$cmd_file" 2>&1)
-status=$?
+if [ -f "$cmd_file" ]; then
+  out=$(bash "$cmd_file" 2>&1)
+  status=$?
+else
+  out=""
+  status=0
+fi
 
-if [ $status -eq 0 ]; then
+pending=""
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  res=$(bash "$checker" "$p" 2>/dev/null)
+  [ $? -eq 2 ] && continue
+  printf '%s\n' "$res" | grep -qx 'status=IN_PROGRESS' || continue
+  left=$(printf '%s\n' "$res" | grep -E '^(open|blocked)=')
+  [ -n "$left" ] || continue
+  pending="$pending$p is Status: IN_PROGRESS with work left:
+$left
+"
+done <<EOF
+$plans
+EOF
+
+if [ $status -eq 0 ] && [ -z "$pending" ]; then
   count=0
   save
   exit 0
@@ -87,9 +113,17 @@ near_cap=no
 if [ "$count" -le "$max" ] && [ "$near_cap" = no ]; then
   save
   {
-    echo "Quality gate failed (attempt $count/$max ($cap_label), $streak consecutive stop-hook continuation(s) so far, exit $status). Fix these before finishing:"
+    if [ $status -ne 0 ]; then
+      echo "Quality gate failed (attempt $count/$max ($cap_label), $streak consecutive stop-hook continuation(s) so far, exit $status). Fix these before finishing:"
+    else
+      echo "Plan incomplete (attempt $count/$max ($cap_label), $streak consecutive stop-hook continuation(s) so far). Do not report this work as done:"
+    fi
     [ -n "$note" ] && [ "$count" -eq 1 ] && echo "$note"
-    printf '%s\n' "$out" | tail -60
+    [ $status -ne 0 ] && printf '%s\n' "$out" | tail -60
+    if [ -n "$pending" ]; then
+      printf '%s' "$pending"
+      echo "Finish the open tasks with /dev-flow:build. If a task is BLOCKED or the build is waiting for the user, tell the user exactly this state and end your turn. Never tick a box, edit the plan or change its Status to get past this gate."
+    fi
   } >&2
   exit 2
 fi
@@ -109,11 +143,20 @@ save
 {
   echo "=================================================================="
   echo "$headline"
-  echo "Last failure (exit $status):"
-  printf '%s\n' "$out" | tail -60
+  if [ $status -ne 0 ]; then
+    echo "Last failure (exit $status):"
+    printf '%s\n' "$out" | tail -60
+  fi
+  [ -n "$pending" ] && printf '%s' "$pending"
   echo "See $giveup_log for the full history."
   echo "=================================================================="
 } | tee -a "$giveup_log" >&2
 # Stderr on exit 0 never reaches the transcript; systemMessage is shown to the user.
-printf '{"systemMessage":"%s"}\n' "Quality gate gave up: .claude/test-cmd still fails. Work is NOT verified. See $giveup_log."
+causes=""
+[ $status -ne 0 ] && causes=".claude/test-cmd still fails"
+if [ -n "$pending" ]; then
+  [ -n "$causes" ] && causes="$causes; "
+  causes="${causes}an IN_PROGRESS plan in .claude/plans is not finished"
+fi
+printf '{"systemMessage":"%s"}\n' "Quality gate gave up: $causes. Work is NOT verified. See $giveup_log."
 exit 0
