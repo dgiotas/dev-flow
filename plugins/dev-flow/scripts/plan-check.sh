@@ -5,8 +5,9 @@
 #
 # Usage:  bash plan-check.sh [--json] [--strict] <repo>/.claude/plans/<slug>.md
 # Prints key=value lines: plan, status, approved, one error=/warning= line per finding
-# (<sev>=<code> task=<N|-> line=<L>: <message>), errors, warnings, overrides, result=ok|fail;
-# the last line is always summary=.
+# (<sev>=<code> task=<N|-> line=<L>: <message>), open=<N>: <title> for each unticked task,
+# blocked=<N> line=<L>: <reason> for each unresolved BLOCKED deviation, errors, warnings, overrides,
+# result=ok|fail; the last line is always summary=.
 # Exit 0 when there are no errors, 1 when there are errors, 2 on a usage problem
 # (error=<reason> then summary=).
 set -u
@@ -189,6 +190,13 @@ function inwords(v, list,   n, a, i) {
   n = split(list, a, " ")
   for (i = 1; i <= n; i++) if (a[i] == v) return 1
   return 0
+}
+function devpaths(text,   s) {
+  while (match(text, /\140[^\140]+\140/)) {
+    s = substr(text, RSTART + 1, RLENGTH - 2)
+    text = substr(text, RSTART + RLENGTH)
+    if (s ~ /^[A-Za-z0-9_.@+\/-]+$/) DECL[s] = 1
+  }
 }
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function parse_override(line, text,   w, nw, code, scope, from, reason, k) {
@@ -413,6 +421,7 @@ BEGIN {
       n++; cur = n; expect_box = 1; fld = ""
       num = $0; sub(/^### Task /, "", num); num = num + 0
       T_LINE[n] = NR; T_NUM[n] = num
+      title = $0; sub(/^### Task [0-9]+: /, "", title); gsub(/\t/, " ", title); T_TITLE[n] = title
       if (num != n) add(NR, "error", "task-number", n, "expected Task " n ", found Task " num)
       placeholder(n)
     } else {
@@ -424,7 +433,12 @@ BEGIN {
   }
   if (sec != "dev") placeholder(sec == "tasks" && cur > 0 ? cur : "-")
   if (sec == "dev" && $0 != "## Deviations" && $0 !~ /^[ \t]*$/) {
-    if ($0 ~ /^- Task [0-9]+: .*[^ ]/) { nd++; D_LINE[nd] = NR; D_NUM[nd] = substr($0, 8) + 0 }
+    if ($0 ~ /^- Task [0-9]+: .*[^ ]/) { nd++; D_LINE[nd] = NR; D_NUM[nd] = substr($0, 8) + 0
+      rest = $0; sub(/^- Task [0-9]+: /, "", rest)
+      tag = ENVIRON["PLAN_BLOCKED"] ":"
+      if (index(rest, tag) == 1) { NB++; B_TASK[NB] = D_NUM[nd]; B_LINE[NB] = NR; btext = trim(substr(rest, length(tag) + 1)); gsub(/\t/, " ", btext); B_TEXT[NB] = btext }
+      devpaths($0)
+    }
     else add(NR, "error", "deviation-line", "-", "Deviations line must be '- Task N: <text>'")
   }
   if (sec == "tasks" && expect_box && $0 !~ /^[ \t]*$/) {
@@ -516,6 +530,10 @@ END {
   if (json == 1) {
     print "H\tstatus\t" sv
     print "H\tapproved\t" av
+    for (i = 1; i <= n; i++) if (!(T_DONE[i] + 0)) print "O\t" T_NUM[i] "\t" T_TITLE[i]
+    for (k = 1; k <= NB; k++) print "B\t" B_TASK[k] "\t" B_LINE[k] "\t" B_TEXT[k]
+    for (p in FILESET) print "D\t" p
+    for (p in DECL) print "D\t" p
     for (i = 1; i <= nf; i++) {
       ol = ""; orr = ""
       if (FV[i] == "overridden") { ol = O_LINE[FO[i]]; orr = O_REASON[FO[i]] }
@@ -532,6 +550,8 @@ END {
   print "plan=" plan
   print "status=" sv
   print "approved=" av
+  for (i = 1; i <= n; i++) if (!(T_DONE[i] + 0)) print "open=" T_NUM[i] ": " T_TITLE[i]
+  for (k = 1; k <= NB; k++) print "blocked=" B_TASK[k] " line=" B_LINE[k] ": " B_TEXT[k]
   for (i = 1; i <= nf; i++) {
     suffix = ""
     if (FV[i] == "overridden") suffix = " (override line " O_LINE[FO[i]] ": " O_REASON[FO[i]] ")"
@@ -567,6 +587,9 @@ if [ "$json" = 1 ]; then
     | {plan: $plan, status: $h.status, approved: $h.approved,
        result: $s[4], errors: ($s[1] | tonumber), warnings: ($s[2] | tonumber), overrides: ($s[3] | tonumber),
        summary: $s[5],
+       open: [$r[] | select(.[0] == "O") | {task: (.[1] | tonumber), title: .[2]}],
+       blocked: [$r[] | select(.[0] == "B") | {task: (.[1] | tonumber), line: (.[2] | tonumber), text: .[3]}],
+       declared: ([$r[] | select(.[0] == "D") | .[1]] | unique),
        findings: [$r[] | select(.[0] == "F") | {severity: .[1], code: .[2], task: (.[3] | num), line: (.[4] | tonumber), message: .[5],
          override: (if .[6] == "" then null else {line: (.[6] | tonumber), reason: .[7]} end)}]}' "$rows"
   jrc=$?
