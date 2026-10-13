@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # dev-flow bootstrap. Safe to re-run.
-# Usage: bash install.sh [marketplace-source] [--with-memory] [--with-powerline]
-#                        [--skip-superpowers] [--skip-codegraph]
+# Usage: bash install.sh [marketplace-source] [--skip-codegraph]
 #                        [-y|--yes|--non-interactive] [--no-color] [--dry-run]
 #   marketplace-source: local path or GitHub "org/repo" (default: this folder when run
 #                        from a clone, else dgiotas/dev-flow)
-#   --with-memory:      also install claude-mem for cross-session recall (opt-in)
-#   --with-powerline:   also install claude-powerline (cosmetic status line, opt-in)
 #   DEV_FLOW_VERSION=x.y.z  env var: install that tagged release (tag dev-flow--vx.y.z; available from 1.12.0)
 #   -y, --yes, --non-interactive: force non-interactive mode even on a TTY
 #   --no-color:          disable coloured output
 #   --dry-run:           show the plan, then exit 0 without installing anything
 #
 # One-liner:  curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash
-#   flags:    ... | bash -s -- --with-memory
+#   flags:    ... | bash -s -- --skip-codegraph
 #   checklist: bash <(curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh)
 #
 # Design notes (learned the hard way):
@@ -31,24 +28,18 @@ export GIT_TERMINAL_PROMPT=0
 
 usage() {
   cat <<'EOF'
-Usage: bash install.sh [marketplace-source] [--with-memory] [--with-powerline]
-                        [--skip-superpowers] [--skip-codegraph]
+Usage: bash install.sh [marketplace-source] [--skip-codegraph]
                         [-y|--yes|--non-interactive] [--no-color] [--dry-run]
   marketplace-source: local path or GitHub "org/repo" (default: this folder when run
                        from a clone, else dgiotas/dev-flow)
-  --with-memory:      also install claude-mem for cross-session recall (opt-in)
-  --with-powerline:   also install claude-powerline (cosmetic status line, opt-in)
   DEV_FLOW_VERSION=x.y.z  env var: install that tagged release (tag dev-flow--vx.y.z; available from 1.12.0)
 
 One-liner:  curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash
-  flags:    ... | bash -s -- --with-memory
+  flags:    ... | bash -s -- --skip-codegraph
   checklist: bash <(curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh)
 EOF
 }
 
-WITH_MEMORY=0
-WITH_POWERLINE=0
-SKIP_SUPERPOWERS=0
 SKIP_CODEGRAPH=0
 NON_INTERACTIVE=0
 NO_COLOR_FLAG=0
@@ -57,9 +48,6 @@ DRY_RUN=0
 SRC=""
 for arg in "$@"; do
   case "$arg" in
-    --with-memory)      WITH_MEMORY=1; FLAGS_SET=1 ;;
-    --with-powerline)   WITH_POWERLINE=1; FLAGS_SET=1 ;;
-    --skip-superpowers) SKIP_SUPERPOWERS=1; FLAGS_SET=1 ;;
     --skip-codegraph)   SKIP_CODEGRAPH=1; FLAGS_SET=1 ;;
     -y|--yes|--non-interactive) NON_INTERACTIVE=1 ;;
     --no-color)         NO_COLOR_FLAG=1 ;;
@@ -245,20 +233,17 @@ mark() { [ "$1" = "1" ] && printf 'x' || printf ' '; }
 select_components() {
   [ "$INTERACTIVE" = 1 ] && [ "$FLAGS_SET" = 0 ] || return 0
 
-  local sel_superpowers=1 sel_codegraph=1 sel_memory=0 sel_powerline=0
-  local hint="" first=1 n=13 i reply word bad
+  local sel_codegraph=1
+  local hint="" first=1 n=10 i reply word bad
 
   render_checklist() {
     printf '\n'
     printf 'Select components  (dev-flow itself is always installed)\n'
     printf '\n'
-    printf '  %-2s [%s]  %-18s %-30s%s\n' "1" "$(mark "$sel_superpowers")" "Superpowers" "superpowers-marketplace" "recommended"
     printf '  %-2s [%s]  %-18s %-30s%s\n' "-" "x" "dev-flow" "this marketplace" "required"
-    printf '  %-2s [%s]  %-18s %-30s%s\n' "2" "$(mark "$sel_codegraph")" "CodeGraph" "structure / caller analysis" "optional"
-    printf '  %-2s [%s]  %-18s %-30s%s\n' "3" "$(mark "$sel_memory")" "claude-mem" "cross-session memory" "reads tool output"
-    printf '  %-2s [%s]  %-18s %-30s%s\n' "4" "$(mark "$sel_powerline")" "claude-powerline" "status line" "cosmetic"
+    printf '  %-2s [%s]  %-18s %-30s%s\n' "1" "$(mark "$sel_codegraph")" "CodeGraph" "structure / caller analysis" "optional"
     printf '\n'
-    printf '  Numbers toggle (e.g. "2" or "2 4").  a = all,  d = defaults\n'
+    printf '  Numbers toggle (e.g. "1").  d = defaults\n'
     printf '  Enter = install,  q = quit\n'
     if [ -n "$hint" ]; then
       printf '  %s%s%s\n' "$C_WARN" "$hint" "$C_OFF"
@@ -295,14 +280,13 @@ select_components() {
     fi
     case "$reply" in
       q) emit "nothing installed"; exit 0 ;;
-      a) sel_superpowers=1; sel_codegraph=1; sel_memory=1; sel_powerline=1; continue ;;
-      d) sel_superpowers=1; sel_codegraph=1; sel_memory=0; sel_powerline=0; continue ;;
+      d) sel_codegraph=1; continue ;;
     esac
 
     bad=0
     for word in $reply; do
       case "$word" in
-        1|2|3|4|-) ;;
+        1|-) ;;
         *) bad=1 ;;
       esac
     done
@@ -312,19 +296,13 @@ select_components() {
     fi
     for word in $reply; do
       case "$word" in
-        1) sel_superpowers=$((1 - sel_superpowers)) ;;
-        2) sel_codegraph=$((1 - sel_codegraph)) ;;
-        3) sel_memory=$((1 - sel_memory)) ;;
-        4) sel_powerline=$((1 - sel_powerline)) ;;
+        1) sel_codegraph=$((1 - sel_codegraph)) ;;
         -) hint="dev-flow is required" ;;
       esac
     done
   done
 
-  if [ "$sel_superpowers" = 1 ]; then SKIP_SUPERPOWERS=0; else SKIP_SUPERPOWERS=1; fi
   if [ "$sel_codegraph" = 1 ]; then SKIP_CODEGRAPH=0; else SKIP_CODEGRAPH=1; fi
-  WITH_MEMORY=$sel_memory
-  WITH_POWERLINE=$sel_powerline
 }
 
 # count_steps -- sets STEP_TOTAL to the number of run_step calls the chosen
@@ -332,13 +310,10 @@ select_components() {
 # an estimate: it can't know whether the npm install itself will succeed.
 count_steps() {
   STEP_TOTAL=0
-  [ "$SKIP_SUPERPOWERS" = "0" ] && STEP_TOTAL=$((STEP_TOTAL + 2))
   STEP_TOTAL=$((STEP_TOTAL + 2))  # dev-flow: always
   if [ "$SKIP_CODEGRAPH" = "0" ] && command -v npm >/dev/null; then
     command -v codegraph >/dev/null || STEP_TOTAL=$((STEP_TOTAL + 1))
   fi
-  [ "$WITH_MEMORY" = "1" ] && command -v npx >/dev/null && STEP_TOTAL=$((STEP_TOTAL + 1))
-  [ "$WITH_POWERLINE" = "1" ] && STEP_TOTAL=$((STEP_TOTAL + 2))
   STEP_TOTAL=$((STEP_TOTAL + 1))  # verify
   STEP_DONE=0
 }
@@ -352,12 +327,6 @@ plan_block() {
   emit "${C_BOLD}Plan  ($STEP_TOTAL steps)${C_OFF}"
 
   local tag
-  if [ "$SKIP_SUPERPOWERS" = "0" ]; then
-    tag=""; has_marketplace superpowers-marketplace && tag="  ${C_WARN}[have]${C_OFF}"
-    emit "  superpowers      marketplace obra/superpowers-marketplace$tag"
-    tag=""; has_plugin superpowers@superpowers-marketplace && tag="  ${C_WARN}[have]${C_OFF}"
-    emit "                   plugin      superpowers@superpowers-marketplace$tag"
-  fi
 
   tag=""; has_marketplace dev-flow-marketplace && tag="  ${C_WARN}[have]${C_OFF}"
   emit "  dev-flow         marketplace dev-flow-marketplace  <- $SRC$tag"
@@ -371,23 +340,6 @@ plan_block() {
   else
     emit "  codegraph        npm install -g @colbymchenry/codegraph"
   fi
-
-  if [ "$WITH_MEMORY" = "1" ] && command -v npx >/dev/null; then
-    emit "  claude-mem       npx --yes claude-mem install"
-  else
-    emit "  claude-mem       npx --yes claude-mem install  ${C_DIM}[skip]${C_OFF}"
-  fi
-
-  if [ "$WITH_POWERLINE" = "1" ]; then
-    tag=""; has_marketplace claude-powerline && tag="  ${C_WARN}[have]${C_OFF}"
-    emit "  claude-powerline marketplace Owloops/claude-powerline$tag"
-    tag=""; has_plugin claude-powerline@claude-powerline && tag="  ${C_WARN}[have]${C_OFF}"
-    emit "                   plugin      claude-powerline@claude-powerline$tag"
-  else
-    emit "  claude-powerline marketplace Owloops/claude-powerline  ${C_DIM}[skip]${C_OFF}"
-    emit "                   plugin      claude-powerline@claude-powerline"
-  fi
-  emit "                   manual follow-up: run /powerline inside Claude Code"
 
   emit "  verify           claude plugin list"
 }
@@ -403,16 +355,6 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 section 2 "Plugins"
-if [ "$SKIP_SUPERPOWERS" = "0" ]; then
-  has_marketplace superpowers-marketplace && STEP_ALREADY=1
-  run_step 120 "add marketplace obra/superpowers-marketplace" \
-    claude plugin marketplace add obra/superpowers-marketplace
-  has_plugin superpowers@superpowers-marketplace && STEP_ALREADY=1
-  run_step 180 "install superpowers" \
-    claude plugin install -y superpowers@superpowers-marketplace
-else
-  skip "superpowers skipped (--skip-superpowers)"
-fi
 has_marketplace dev-flow-marketplace && STEP_ALREADY=1
 run_step 120 "add marketplace dev-flow ($SRC)" claude plugin marketplace add "$SRC" \
   || { has_marketplace dev-flow-marketplace && { note "dev-flow-marketplace is already registered from a different source or version."; note "Run uninstall.sh first (see README > Uninstalling), then re-run this installer."; }; }
@@ -436,45 +378,7 @@ else
   warn "npm not found; skipping CodeGraph: the bundled CodeGraph MCP server will not connect until you install the binary"
 fi
 
-section 4 "Persistent memory (optional, off by default)"
-if [ "$WITH_MEMORY" = "1" ]; then
-  if command -v npx >/dev/null; then
-    run_step 300 "install claude-mem" npx --yes claude-mem install
-    warn "IMPORTANT: recent claude-mem versions default some integrations to a hosted"
-    warn "provider. Open its config and select the local/offline provider before use,"
-    warn "especially on repos with secrets or PCI-adjacent code (it captures tool output)."
-  else
-    warn "npx not found; skipping claude-mem"
-  fi
-else
-  skip "skipped. Re-run with --with-memory to install claude-mem (cross-session recall)."
-fi
-
-section 5 "claude-powerline status line (optional, cosmetic, off by default)"
-if [ "$WITH_POWERLINE" = "1" ]; then
-  # Warn before touching an existing status line -- its wizard replaces it.
-  settings="$HOME/.claude/settings.json"
-  if [ -f "$settings" ] && command -v jq >/dev/null && jq -e '.statusLine' "$settings" >/dev/null 2>&1; then
-    warn "you already have a statusLine configured; the /powerline wizard will replace it:"
-    emit "         | $(jq -c '.statusLine' "$settings" 2>/dev/null)"
-    warn "back it up first if you want it:  cp \"$settings\" \"$settings.bak\""
-  fi
-  has_marketplace claude-powerline && STEP_ALREADY=1
-  run_step 120 "add marketplace Owloops/claude-powerline" \
-    claude plugin marketplace add Owloops/claude-powerline
-  has_plugin claude-powerline@claude-powerline && STEP_ALREADY=1
-  run_step 180 "install claude-powerline" \
-    claude plugin install -y claude-powerline@claude-powerline
-  note "FINAL STEP IS MANUAL: run  /powerline  inside Claude Code."
-  note "That wizard writes ~/.claude/claude-powerline.json and wires statusLine;"
-  note "it is interactive, so this script cannot run it for you."
-  note "Needs a Nerd Font for the glyphs -- otherwise use --charset=text."
-  note "Themes: dark light nord tokyo-night rose-pine gruvbox. Visual config: powerline.owloops.com"
-else
-  skip "skipped. Re-run with --with-powerline for the claude-powerline status line."
-fi
-
-section 6 "Verify"
+section 4 "Verify"
 run_step 60 "claude plugin list" claude plugin list || true
 bar_clear
 STEP_TOTAL=0

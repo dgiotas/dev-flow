@@ -11,7 +11,7 @@ Quality-gate hooks, a guard on your guidance files, bundled MCP servers and nine
 
 ## Why dev-flow
 
-Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has Sonnet implement it one task at a time, then hands the finished diff back to Opus for review. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails; where an organization's managed settings block plugin hooks, dev-flow falls back to explicit, instruction-level checks instead (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)). It also bundles MCP servers and nine dev skills, and is built to sit alongside obra/superpowers.
+Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has Sonnet implement it one task at a time, then hands the finished diff back to Opus for review. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails; where an organization's managed settings block plugin hooks, dev-flow falls back to explicit, instruction-level checks instead (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)). It also bundles MCP servers and nine dev skills.
 
 ## Getting Started
 
@@ -25,10 +25,10 @@ Required: Claude Code, `jq`, `git`, `curl` (for the one-liner installer). Option
 curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash
 ```
 
-Installs Superpowers + dev-flow + CodeGraph, non-interactively. Optional add-ons via the same one-liner with a flag appended:
+Installs dev-flow + CodeGraph, non-interactively. Pass flags after bash -s --, for example:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash -s -- --with-memory
+curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/install.sh | bash -s -- --skip-codegraph
 ```
 
 For the interactive checklist instead of the defaults:
@@ -56,8 +56,6 @@ On a terminal, a plain `bash install.sh` shows an interactive checklist to pick 
 **Manual** (inside a Claude Code session):
 
 ```text
-/plugin marketplace add obra/superpowers-marketplace
-/plugin install superpowers@superpowers-marketplace
 /plugin marketplace add dgiotas/dev-flow                  # pin a version: dgiotas/dev-flow#dev-flow--v1.12.0
 /plugin install dev-flow@dev-flow-marketplace
 ```
@@ -67,9 +65,6 @@ On a terminal, a plain `bash install.sh` shows an interactive checklist to pick 
 
 | Flag | Effect |
 |---|---|
-| `--with-memory` | also install claude-mem for cross-session recall (opt-in) |
-| `--with-powerline` | also install claude-powerline (cosmetic status line, opt-in) |
-| `--skip-superpowers` | don't install Superpowers |
 | `--skip-codegraph` | don't install the CodeGraph MCP server binary |
 | `-y`, `--yes`, `--non-interactive` | force non-interactive mode even on a TTY |
 | `--no-color` | disable coloured output |
@@ -85,11 +80,9 @@ Re-running is safe. Every step is time-limited and shows its own output on failu
 <summary>What the installer does</summary>
 
 1. Checks prerequisites (`claude`, `jq`, `git`, optionally `node`, `uv`, `codegraph`, `php`, `docker`, `timeout`).
-2. Adds the Superpowers and dev-flow marketplaces, then installs both plugins.
+2. Adds the dev-flow marketplace, then installs the plugin.
 3. Installs the CodeGraph MCP server binary (`npm install -g @colbymchenry/codegraph`), unless skipped.
-4. Optionally installs claude-mem for cross-session memory (`--with-memory`, off by default).
-5. Optionally installs claude-powerline for a status line (`--with-powerline`, off by default).
-6. Verifies with `claude plugin list` and prints next steps.
+4. Verifies with `claude plugin list` and prints next steps.
 
 </details>
 
@@ -118,11 +111,10 @@ Removes only the dev-flow plugin and marketplace — and, since context7/semble/
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/uninstall.sh | bash -s -- --remove-tools
-curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/uninstall.sh | bash -s -- --remove-superpowers
 curl -fsSL https://raw.githubusercontent.com/dgiotas/dev-flow/main/uninstall.sh | bash -s -- --dry-run
 ```
 
-`--remove-tools` also removes claude-powerline (plugin + marketplace) and the CodeGraph binary (`npm uninstall -g @colbymchenry/codegraph`). `--remove-superpowers` also removes Superpowers (plugin + marketplace). `--dry-run` prints what would run without removing anything. From a clone: `bash uninstall.sh …` with the same flags.
+`--remove-tools` also removes the CodeGraph binary (`npm uninstall -g @colbymchenry/codegraph`). `--dry-run` prints what would run without removing anything. From a clone: `bash uninstall.sh …` with the same flags.
 
 **Manual leftovers.** Things the script doesn't touch:
 
@@ -132,24 +124,15 @@ claude plugin list
 claude plugin marketplace list
 claude mcp list
 
-# 4. CodeGraph — only relevant if you installed before v1.11.0, when
+# 2. CodeGraph — only relevant if you installed before v1.11.0, when
 #    install.sh registered it globally in ~/.claude.json, outside the plugin.
 #    From v1.11.0 the plugin-scoped one is removed with the plugin.
 #    Confirm the exact server name from `claude mcp list` first.
 claude mcp remove codegraph
 npm uninstall -g @colbymchenry/codegraph
-
-# 5. statusLine, only if you installed claude-powerline with --with-powerline:
-jq 'del(.statusLine)' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json
-rm -f ~/.claude/claude-powerline.json
-
-# 6. claude-mem, only if you installed it with --with-memory.
-#    It installs its own hooks and a background worker, so use its own uninstaller:
-npx claude-mem uninstall        # if this fails, see https://github.com/thedotmack/claude-mem
-claude mcp list                 # then remove any leftover entry it registered
 ```
 
-Then check `~/.claude/settings.json` for any leftover `hooks` entries mentioning `claude-mem` or `codegraph` (dev-flow's own hooks live inside the plugin and disappear with it), and restart Claude Code.
+Then check `~/.claude/settings.json` for any leftover `hooks` entries mentioning `codegraph` (dev-flow's own hooks live inside the plugin and disappear with it), and restart Claude Code.
 
 **Per-repo leftovers.** Uninstalling the plugin does not touch files it wrote into your repos. Remove per repo as wanted:
 
@@ -165,7 +148,7 @@ rm -rf .codegraph               # CodeGraph index
 
 If you kept a backup before first installing (`cp -r ~/.claude ~/.claude.bak-<date>`, `cp ~/.claude.json ~/.claude.json.bak-<date>`), restoring those is the fastest full reset.
 
-Verified: `uninstall.sh`'s default path — removing the dev-flow plugin and marketplace — was run for real against an isolated `CLAUDE_CONFIG_DIR` temp config, confirming dev-flow was installed and then fully removed, checked with `claude plugin list` / `marketplace list`. `--remove-tools` and `--remove-superpowers` were verified against the stubbed test rig (a fake `claude`), not by actually removing claude-powerline, CodeGraph or Superpowers from a real install. The manual leftover items above (1, 4, 5, 6) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly, and check the `settings.json` / `claude-powerline.json` cleanup in step 5 before and after.
+Verified: `uninstall.sh`'s default path — removing the dev-flow plugin and marketplace — was run for real against an isolated `CLAUDE_CONFIG_DIR` temp config, confirming dev-flow was installed and then fully removed, checked with `claude plugin list` / `marketplace list`. `--remove-tools` was verified only against a fake `claude` (`tests/uninstall.sh` dry-runs it), not by actually removing CodeGraph from a real install. The manual leftover items above (1, 2) are **not** verified — they depend on what those tools registered on your machine, so check `claude mcp list` between steps rather than trusting the commands blindly.
 
 </details>
 
@@ -510,7 +493,7 @@ What it matches was observed by the user in a live Claude Code session, version 
 
 ### Managed settings: hooks disabled by your organization
 
-If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's hooks (pre-write guard, implementer gate, per-edit check, stop gate, compaction snapshot, session-start restore) run. Side effects: the optional claude-powerline status line doesn't show either (`statusLine` is narrowed to managed settings under the same policy), and claude-mem, which is hook-based, doesn't record. MCP servers, skills, agents and commands are unaffected — only hooks and the status line are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
+If your organization sets `allowManagedHooksOnly: true` (or `disableAllHooks: true`) in Claude Code managed settings, plugin hooks are blocked — none of dev-flow's hooks (pre-write guard, implementer gate, per-edit check, stop gate, compaction snapshot, session-start restore) run. MCP servers, skills, agents and commands are unaffected — only hooks are blocked. See [the hooks docs](https://code.claude.com/docs/en/hooks).
 
 The real fix is for your admin: force-enable dev-flow in managed settings, because hooks belonging to a force-enabled plugin are exempt from `allowManagedHooksOnly`:
 
@@ -797,33 +780,6 @@ So `ok build` saves you retyping the slug and slash command, at the cost of the 
 
 Also: `spec-architect`, `plan-reviewer`, `implementer` and `reviewer` are subagents. A subagent can spawn further subagents only when its `tools:` list includes `Agent` (checked live on Claude Code 2.1.285), and none of these four lists it, so they do not. `/dev-flow:spec` dispatches `plan-reviewer` itself rather than through `spec-architect`. The orchestrator is always the top-level session, never a subagent, so the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here.
 
-### Memory (optional)
-
-Nothing is installed by default; `CLAUDE.md` and `.claude/rules` are the durable, reviewed record and need no extra tool; plans and specs are local working notes. For personal cross-session recall, `bash install.sh --with-memory` (or `… | bash -s -- --with-memory` for the one-liner) installs [claude-mem](https://github.com/thedotmack/claude-mem). Before using it on anything sensitive:
-- Open its config and select the **local/offline** provider — recent versions can default some integrations to a hosted service.
-- It captures tool output via hooks, so review what it stores before pointing it at the PCI-adjacent app or anything with secrets.
-- It records whatever Claude concluded, not just what you confirmed, so treat its recall as a lead to verify, not a fact — put anything that must be trusted into `CLAUDE.md` instead.
-
-### Status line (optional)
-
-`bash install.sh --with-powerline` adds [Owloops/claude-powerline](https://github.com/Owloops/claude-powerline) — a powerline-style status line for Claude Code. Purely cosmetic; nothing else here depends on it.
-
-The installer adds its marketplace and installs the plugin (both verified working). **One step stays manual**, because it is an interactive wizard a script cannot drive:
-
-```text
-/powerline        # run this inside Claude Code
-```
-
-That writes `~/.claude/claude-powerline.json` and wires `statusLine` into your settings. The plugin ships exactly one component — that wizard command.
-
-- **It replaces any status line you already have.** The installer detects an existing `statusLine` in `~/.claude/settings.json`, prints it, and tells you to back it up first.
-- **Needs a Nerd Font** for the glyphs, or the segments render as boxes — use `--charset=text` instead.
-- Themes: `dark` (default), `light`, `nord`, `tokyo-night`, `rose-pine`, `gruvbox`, `custom`. Styles: `minimal`, `powerline`, `capsule`, `tui`. Visual configurator at powerline.owloops.com.
-- Skipping the wizard, the manual equivalent is a `statusLine` entry in `settings.json`:
-  ```json
-  { "statusLine": { "type": "command", "command": "npx -y @owloops/claude-powerline@latest --style=powerline" } }
-  ```
-
 ### Updating
 
 ```bash
@@ -855,7 +811,7 @@ claude plugin update dev-flow@dev-flow-marketplace
 ```
 From v1.10.0 the block message's second line names the version that fired, so a stale copy is self-reporting. If `/status` shows `Enterprise managed settings` and updating doesn't help, the cause is policy, not a stale copy — see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization).
 
-**A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-superpowers` and `--skip-codegraph` let you get the rest installed meanwhile.
+**A step reports TIMED OUT.** Run that one command on its own to see what it wants — usually network (`npm install -g`, a GitHub clone) or credentials for a private marketplace repo. `--skip-codegraph` lets you get the rest installed meanwhile.
 
 **Installed but nothing appears.** Restart Claude Code, then `claude plugin list` and `claude plugin details dev-flow`. The inventory should read: Skills 16 (9 skills + the 7 commands), Agents 5, Hooks 5 (PreToolUse, PostToolUse, Stop, PreCompact, SessionStart), MCP servers 4.
 
@@ -876,7 +832,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - `Write`/`Edit` are gated mechanically; the `Bash` bypass is now closed for the common shapes (heredoc, `>`/`>>`, `tee`, `sed -i`/`perl -i`, `cp`, `mv`, `install`, `rm`/`unlink`/`shred`, `dd`, `truncate`, `git restore`/`git checkout -- `, `python -c`). This is command-text matching, a guardrail, not a boundary — obfuscated command text (a variable, a script file, base64), `node -e`/`ruby -e` one-liners that write files, and a directory-target `cp`/`mv` (e.g. `cp x.md .claude/rules/` without naming the destination file, so the guard never sees a `.md` filename to match) all still get through. The guard overall remains a guardrail against model error, not a security boundary.
 - The compaction snapshot is verified by running its scripts directly, not yet inside a live compaction; see [Compaction snapshot](#compaction-snapshot) for what it does not capture.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
-- No persistent memory (add `claude-mem` separately if wanted) and no usage dashboard.
+- No persistent memory and no usage dashboard.
 - `security-review` and `db-migration` give structured checks, not compliance certification or a substitute for DBA and security sign-off.
 - `ok build` is pattern-matched by the model reading `spec.md`'s own instructions, not by the Claude Code harness — it (and near-equivalents like "build it") gets recognised because the command tells the model to look for an approval reply, not because of any special runtime feature.
 - The clarification check (seven categories, the five-question cap, waiting only on `blocking`, and no questions for a fully specified request) is prompt instructions, not enforced by the harness, and was only spot-checked in two headless runs on a fixture repo during 1.16.0 development.
