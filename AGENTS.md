@@ -8,11 +8,12 @@ A private Claude Code plugin marketplace repo: one plugin (`dev-flow`) providing
 |---|---|
 | Validate the repo (JSON, shell syntax, YAML frontmatter, `tests/*.sh`) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
+| Lint plugin assets (frontmatter, tools, MCP names, references, size, similarity) | `bash plugins/dev-flow/scripts/asset-lint.sh` |
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
 | Run the eval suite (billed; approval first) | `bash ci/eval-run.sh <pr\|nightly> <out-dir>` |
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, push, then `claude plugin tag plugins/dev-flow --push` on main; colleagues run `claude plugin marketplace update` then `/plugin update`, then `/reload-plugins` or a new session |
 
-No package manager, no build step, no `package.json`. The only CI is `.github/workflows/evals.yml`, which runs the billed eval suite; `.claude/test-cmd` is not run in CI. `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo, plus the `tests/*.sh` behavioural suites — is the closest thing to a test suite here.
+No package manager, no build step, no `package.json`. The only CI is `.github/workflows/evals.yml`, which runs the billed eval suite plus the free `asset-lint` job; `.claude/test-cmd` as a whole is still not run in CI. `.claude/test-cmd` — jq JSON validation plus `bash -n` syntax checks across the repo, the asset lint, plus the `tests/*.sh` behavioural suites — is the closest thing to a test suite here.
 
 ## Layout
 
@@ -29,6 +30,7 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 - `plugins/dev-flow/scripts/plan-check.sh` — deterministic structural validator for `.claude/plans/<slug>.md` (exit 0 ok, 1 findings, 2 usage; `--json`, `--strict`, `--template`), run by `/dev-flow:spec`, `/dev-flow:build` step 0, the implementer-gate hook and the stop gate (it also prints `open=` and `blocked=`; the stop gate's plan check is tested by `tests/stop-gate.sh`, which also pins the retry-cycle golden); tested by `tests/plan-check.sh`.
 - `plugins/dev-flow/scripts/plan-schema.sh` — the only definition of the plan contract's value sets and finding codes, sourced by `plan-check.sh`; see `.claude/rules/plans.md`.
 - `plugins/dev-flow/scripts/plan-scope.sh` — lists changed paths against a base that are in no task's Files block or Deviations line (`drift=` lines; exit 0 clean, 1 drift, 2 usage), run by `/dev-flow:build` step 6 for the reviewer; tested by `tests/plan-scope.sh`.
+- `plugins/dev-flow/scripts/asset-lint.sh` — deterministic lint of the plugin's skills, agents, commands and rules: frontmatter syntax, required fields, name matches directory or stem, agent `tools:` allowlist, MCP server names against `.mcp.json`, `/dev-flow:` and agent references, a size budget and skill description similarity (exit 0 ok, 1 errors, 2 usage); run by `.claude/test-cmd` and the `asset-lint` job in `.github/workflows/evals.yml`; tested by `tests/asset-lint.sh`.
 - `plugins/dev-flow/scripts/plan-edit-check.sh` — compares a plan snapshot with the plan after an implementer run and fails on any edit outside that task's checkbox, Files additions and its own appended Deviations lines; run by `/dev-flow:build` step 4; tested by `tests/plan-edit-check.sh`.
 - `plugins/dev-flow/scripts/worktree.sh` — creates `.claude/worktrees/<slug>` on a new branch from a given start point (`HEAD` or the default branch) and copies the matching plan and spec into it when present, for the worktree mode of `/dev-flow:build` and the `git-workflow` skill; tested by `tests/worktree.sh`.
 - `plugins/dev-flow/scripts/default-branch.sh` — detects the default branch from local refs (`origin/HEAD`, then `main`/`master`/`develop`, never fetching) and whether it is checked out, for the base question in `/dev-flow:build` and the `git-workflow` skill; tested by `tests/default-branch.sh`.
@@ -55,7 +57,7 @@ No package manager, no build step, no `package.json`. The only CI is `.github/wo
 
 ## Hazards
 
-- No CI for `.claude/test-cmd`: only the billed eval workflow runs on GitHub. `.claude/test-cmd` only runs inside a Claude Code session, via the stop-gate hook.
+- No CI for `.claude/test-cmd` as a whole: on GitHub only the billed eval workflow and its free `asset-lint` job run. `.claude/test-cmd` only runs inside a Claude Code session, via the stop-gate hook.
 - Bumping `plugins/dev-flow/.claude-plugin/plugin.json` `version` is the release mechanism — forgetting it means colleagues' `/plugin update` sees no change. Non-Anthropic marketplaces (a local directory, or a non-Anthropic GitHub repo) don't auto-update, so an unbumped or un-updated plugin means colleagues keep running the copy they installed on day one, and its hooks silently behave like the old version.
 - If this repo ever runs the plugin's own hooks against itself, `pre-write-guard.sh`'s approval markers live under `.claude/.approved-writes/`, and the stop gate writes `.claude/.stop-gate-state` / `.claude/stop-gate-giveup.log`, and the compaction snapshot writes `.claude/.devflow-state.json` — keep those gitignored, they're local run state, not content to commit.
 - `README.md` marks several claims "not yet verified" / "unverified here" (e.g. whether command `model:` frontmatter actually pins the model live, hooks firing inside a real session). Don't restate those as settled fact.

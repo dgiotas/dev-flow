@@ -17,6 +17,8 @@ while IFS= read -r -d '' f; do
   out=$(ruby -ryaml -e 'YAML.safe_load(File.read(ARGV[0]))' "$f" 2>&1) || { echo "invalid YAML: $f"; echo "$out" | head -1; fail=1; }
 done < <(find . \( -name '*.yml' -o -name '*.yaml' \) -not -path './.git/*' -not -path './.claude/worktrees/*' -print0)
 
+out=$(bash plugins/dev-flow/scripts/asset-lint.sh 2>&1) || { echo "asset-lint failed"; echo "$out" | grep -E '^(error|warning)='; fail=1; }
+
 for t in tests/*.sh; do
   [ -f "$t" ] || continue
   out=$(bash "$t" 2>&1) || { echo "test failed: $t"; echo "$out" | grep -v '^PASS:' | tail -20; fail=1; }

@@ -3,6 +3,7 @@
 # runs only when started by hand (Actions > evals > Run workflow); no schedule.
 # result=inconclusive (exit 2) fails the job but is not a regression. Re-run.
 # Secrets aren't available to fork PRs, which are skipped.
+# asset-lint is a separate free job: deterministic, no secrets, runs on fork PRs too.
 name: evals
 on:
   pull_request:
@@ -19,6 +20,15 @@ concurrency:
   group: evals-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  asset-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Lint plugin assets
+        run: bash plugins/dev-flow/scripts/asset-lint.sh
   evals:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest

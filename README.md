@@ -713,6 +713,24 @@ The without-plugin arm can review a plan on its own, so these cases may show a s
 
 **Local runs can fail on Docker symlinks.** Two attempted local runs on one macOS machine (Claude Code 2.1.285) errored before any agent started, at $0 cost, with "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it — a Bash-granting evaluation cannot run here". The machine's `~/.docker/cli-plugins/` held symlinks; setting `DOCKER_CONFIG` to an empty directory did not help. Nothing was measured from those attempts. Whether other machines or GitHub-hosted runners are affected is not verified.
 
+### Asset lint
+
+`bash plugins/dev-flow/scripts/asset-lint.sh [--json] [--root <dir>] [--max-bytes <n>] [--warn-bytes <n>] [--similarity <x>]` lints the plugin's own skills, agents, commands and `.claude/rules/*.md` with no model calls, and changes nothing. Each finding prints as `<error|warning>=<code> file=<path>: <message>`, followed by the budget metrics, `errors=`, `warnings=`, `result=ok|fail` and a last `summary=` line. The finding codes:
+
+- `frontmatter`: the frontmatter block is missing, unclosed or has a line that is not `key: value`, or an unquoted value that YAML would misread.
+- `field-missing`: a skill or agent lacks `name` or `description`, or a command lacks `description`, or the value is empty or a block scalar.
+- `name-mismatch`: a skill `name` differs from its directory name, or an agent `name` from its file stem.
+- `agent-tools`: an agent has no inline `tools:` allowlist, so it would inherit every tool.
+- `mcp-unknown`: an `mcp__plugin_<plugin>_<server>` grant in `tools:` or `allowed-tools:` names a server that `plugins/dev-flow/.mcp.json` does not declare.
+- `ref-command`: a `/dev-flow:<name>` reference names no command or skill.
+- `ref-agent`: a `` `<name>` agent `` or `` `<name>` subagent `` reference names no agent file.
+- `budget`: description bytes plus rule-file bytes exceed `--max-bytes` (error) or `--warn-bytes` (warning).
+- `skill-similar`: two skill descriptions have a token Jaccard similarity above `--similarity` (error).
+
+Defaults are 16000 bytes (error), 14000 bytes (warning) and 0.30 similarity. They were set from a measurement: descriptions plus rules total about 12,400 bytes, and the most similar skill pair (`code-intel` / `investigate`) scores 0.097, so the defaults leave roughly 30% headroom without hiding a finding today. Rule files are counted in full although they load only on matching paths, so the budget is an upper bound.
+
+Exit codes: 0 no errors (warnings allowed), 1 at least one error, 2 usage or environment problem, printed as `error=<reason>` (`usage`, `root-missing`, `jq-missing`, `plugin-json`) then `summary=`. It runs from `.claude/test-cmd` and as the free `asset-lint` job in `.github/workflows/evals.yml`, which needs no secrets and also runs on fork PRs. That workflow's path filter does not include `.claude/rules/**`, so a PR that changes only rule files does not trigger CI; `.claude/test-cmd` still lints them locally. Covered by `tests/asset-lint.sh`.
+
 ### Security targets config
 
 `.claude/security-targets.json` (schema `dev-flow/security-targets/v1`, template `templates/security-targets.example.json`) lists the non-production targets that future load and active-security agents may touch, and the ceilings. A field is required unless marked optional:
@@ -856,6 +874,7 @@ Releases are git tags named `dev-flow--v<version>`: https://github.com/dgiotas/d
 | Try the plugin locally without installing | `claude --plugin-dir ./plugins/dev-flow` |
 | Validate the repo (JSON, shell syntax, YAML frontmatter, `tests/*.sh`) | `bash .claude/test-cmd` |
 | Check one file after an edit | `bash .claude/lint-cmd <repo-relative-path>` |
+| Lint plugin assets (frontmatter, tools, MCP names, references, size, similarity) | `bash plugins/dev-flow/scripts/asset-lint.sh` |
 | Run the eval suite (billed; approval first) | `bash ci/eval-run.sh <pr\|nightly> <out-dir>` |
 | Release a change | bump `version` in `plugins/dev-flow/.claude-plugin/plugin.json`, merge to `main`, then `claude plugin tag plugins/dev-flow --push` (creates and pushes the `dev-flow--v<version>` tag, validating the manifest) |
 
