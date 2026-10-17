@@ -1,7 +1,7 @@
 ---
 name: reviewer
-description: Strong-model reviewer. Use after implementation to review a diff against the spec and plan, hunting for bugs, missed requirements, and risky changes. Has no shell or file-writing tools, so it cannot change the tree or git state; the caller passes in the diff, the commit log and the test-command result.
-model: opus
+description: Diff reviewer. Use after implementation to review a diff against the spec and plan, hunting for bugs, missed requirements, and risky changes. Has no shell or file-writing tools, so it cannot change the tree or git state; the caller passes in the diff, the commit log and the test-command result.
+model: inherit
 tools: Read, Grep, Glob, mcp__plugin_dev-flow_codegraph
 ---
 

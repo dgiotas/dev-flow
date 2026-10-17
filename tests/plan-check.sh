@@ -186,6 +186,20 @@ expect dep-zero 1 'error=depends-malformed task=2 ' "$(mk dep-zero '{sub(/^Depen
 expect risk-bad 1 'error=risk-value task=1 ' "$(mk risk-bad '{sub(/^Risk: low$/,"Risk: severe")}1')"
 golden dep-none "$(mk dep-none '{sub(/^Depends on: 1$/,"Depends on: none")}1')"
 
+# Model and Effort task routing
+golden route "$(mk route '{print} /^Risk: low$/{print "Model: haiku"; print "Effort: low"} /^Depends on: 1$/{print "Model: opus"; print "Effort: xhigh"}')"
+golden model-after-files "$(mk model-after-files '{print} /^- test tests\/greet.sh$/{print "Model: sonnet"}')"
+expect model-bad 1 'error=route-value task=1 line=27:' "$(mk model-bad '{print} /^Risk: low$/{print "Model: gpt"}')"
+expect effort-bad 1 'error=route-value task=2 line=46:' "$(mk effort-bad '{print} /^Depends on: 1$/{print "Effort: huge"}')"
+expect model-dup 1 'error=field-duplicate task=1 ' "$(mk model-dup '{print} /^Risk: low$/{print "Model: haiku"; print "Model: opus"}')"
+golden route-header "$(mk route-header '{print} NR==5{print "Plan review: sonnet high"; print "Review: haiku low"}')"
+expect review-bad 1 'error=route-value task=- line=6:' "$(mk review-bad '{print} NR==5{print "Review: opus"}')"
+expect review-model-bad 1 'error=route-value task=- line=6:' "$(mk review-model-bad '{print} NR==5{print "Review: gpt high"}')"
+expect review-dup 1 'error=route-value task=- line=7:' "$(mk review-dup '{print} NR==5{print "Review: opus high"; print "Review: opus high"}')"
+expect plan-review-low 1 'error=route-value task=- line=6:' "$(mk plan-review-low '{print} NR==5{print "Plan review: sonnet medium"}')"
+expect plan-review-haiku 1 'error=route-value task=- line=6:' "$(mk plan-review-haiku '{print} NR==5{print "Plan review: haiku high"}')"
+expect plan-review-dup 1 'error=route-value task=- line=7:' "$(mk plan-review-dup '{print} NR==5{print "Plan review: opus high"; print "Plan review: opus max"}')"
+
 # Files entries, verbs, path rules, existence walk
 expect verb-bad 1 'error=files-verb task=2 ' "$(mk verb-bad 'NR==35{print "- edit src/app.sh"; next}1')"
 expect entry-nopath 1 'error=files-entry task=1 ' "$(mk entry-nopath 'NR==16{print "- create"; next}1')"
@@ -328,11 +342,15 @@ if [ "$rc" = 2 ] && [ "$(printf '%s\n' "$out" | head -n 1)" = error=jq-missing ]
 expect template-usage 2 error=usage --template "$base"
 first=$(bash "$script" --template | head -n 1)
 if [ "$first" = '# Plan: <title>' ]; then echo "PASS: template"; else echo "FAIL: template (first line: $first)"; fail=1; fi
+for l in 'Plan review: <sonnet|opus> <high|xhigh|max>' 'Review: <haiku|sonnet|opus> <low|medium|high|xhigh|max>' 'Model: <haiku|sonnet|opus>' 'Effort: <low|medium|high|xhigh|max>'; do
+  if bash "$script" --template | grep -qxF -- "$l"; then echo "PASS: template-route $l"; else echo "FAIL: template-route $l"; fail=1; fi
+done
 bash "$script" --template | sed -e 's#<slug>#demo#g' \
     -e 's#<create|modify|delete|test> <repo-relative path>#test tests/greet.sh#' \
     -e 's#rename <old repo-relative path> -> <new repo-relative path>#rename old.txt -> new.txt#' \
     -e 's#`<exact command>`#`bash tests/greet.sh`#g' \
     -e 's#<low|medium|high>#low#' \
+    -e 's#<sonnet|opus>#opus#g' -e 's#<high|xhigh|max>#high#g' -e 's#<haiku|sonnet|opus>#sonnet#g' -e 's#<low|medium|high|xhigh|max>#medium#g' \
     -e 's#<[^>]*>#x#g' > "$R/.claude/plans/template.md"
 golden template-golden "$R/.claude/plans/template.md"
 
@@ -356,7 +374,7 @@ for name in rules agent; do
   if [ "$name" = rules ]; then target="$here/.claude/rules/plans.md"; else target="$here/plugins/dev-flow/agents/spec-architect.md"; fi
   drift=1
   if [ -f "$target" ]; then
-    for s in "$PLAN_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "at most $PLAN_MAX_FILES" $words; do
+    for s in "$PLAN_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "$PLAN_MODEL" "$PLAN_EFFORT" "at most $PLAN_MAX_FILES" $words; do
       grep -qiF -- "$s" "$target" || { echo "FAIL: drift-$name missing '$s'"; drift=0; }
     done
     if [ "$name" = agent ]; then

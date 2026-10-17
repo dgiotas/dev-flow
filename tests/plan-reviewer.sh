@@ -13,7 +13,7 @@ fm=$(awk 'NR==1 && $0=="---" {f=1; next} f && $0=="---" {exit} f' "$agent" 2>/de
 
 if [ -f "$agent" ]; then pass agent-exists; else bad agent-exists; fi
 if printf '%s\n' "$fm" | grep -qx 'name: plan-reviewer'; then pass agent-name; else bad agent-name; fi
-if printf '%s\n' "$fm" | grep -qx 'model: opus'; then pass agent-model; else bad agent-model; fi
+if printf '%s\n' "$fm" | grep -qx 'model: inherit'; then pass agent-model; else bad agent-model; fi
 if printf '%s\n' "$fm" | grep -qx 'tools: Read, Grep, Glob, mcp__plugin_dev-flow_codegraph'; then pass agent-tools; else bad agent-tools; fi
 
 ok=1
@@ -61,9 +61,9 @@ if grep -qF 'return greeting(displayName(user.first, user.last, user.title)); }'
 dl=$(diff "$ev/plan-review-arity/fixture.sh" "$ev/plan-review-pass/fixture.sh" 2>/dev/null | grep '^[<>]')
 if [ "$(printf '%s\n' "$dl" | wc -l | tr -d ' ')" = 2 ] && [ "$(printf '%s\n' "$dl" | grep -vcF 'displayName(user')" = 0 ]; then pass fixtures-differ-once; else bad fixtures-differ-once; fi
 if cmp -s "$ev/plan-review-arity/prompt.md" "$ev/plan-review-pass/prompt.md"; then pass prompts-equal; else bad prompts-equal; fi
-if grep -qF '| `plan-reviewer` (Opus) | Agent |' "$here/README.md"; then pass readme-agent-row; else bad readme-agent-row; fi
+if grep -qF '| `plan-reviewer` (routed) | Agent |' "$here/README.md"; then pass readme-agent-row; else bad readme-agent-row; fi
 if grep -qF '### Plan review' "$here/README.md"; then pass readme-section; else bad readme-section; fi
-if grep -qF '| `plan-reviewer` | Opus |' "$here/README.md"; then pass readme-routing; else bad readme-routing; fi
+if grep -qF '| `plan-reviewer` | the plan' "$here/README.md"; then pass readme-routing; else bad readme-routing; fi
 if grep -qF 'Agents 5' "$here/README.md"; then pass readme-inventory; else bad readme-inventory; fi
 if grep -qF 'Six billed cases' "$here/README.md"; then pass readme-six; else bad readme-six; fi
 if grep -qF 'plan-review-arity' "$here/README.md"; then pass readme-arity; else bad readme-arity; fi

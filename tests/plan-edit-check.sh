@@ -93,6 +93,8 @@ expect untick 1 'error=checkbox-edit' "$tmp/before.md" "$tmp/pre-ticked.md"
 expect files-removed 1 'error=files-removed' "$(mk files-removed '/^- modify src\/c.sh/{next} 1')"
 expect dev-rewrite 1 'error=deviation-rewritten' "$(mk dev-rewrite '{sub(/kept printf/,"kept echo")} 1')"
 expect dev-task 1 'error=deviation-task' "$(mk dev-task '1 END{print "- Task 1: x"}')"
+awk '/^- modify src\/c.sh/{print; print "Model: sonnet"; next} 1' "$tmp/before.md" > "$tmp/model-before.md"
+expect model-edit 1 'error=foreign-edit' "$(mk model-edit '{sub(/^Model: sonnet$/,"Model: opus")} 1' "$tmp/model-before.md")" "$tmp/model-before.md"
 # Finding 6: fence rule mirrors plan-check (same character, at least the opening run length).
 awk '/^### Task 1:/{t=1} t && /^Objective:/{print; print ""; print "~~~"; print "```"; print "### Task 2: fixture"; print "~~~"; next} 1' "$tmp/before.md" > "$tmp/fence-before.md"
 expect fence-tilde-ok 0 'result=ok' "$(mk fence-tilde-ok '/^### Task 2:/{t=1} t && /^- \[ \] Done/{sub(/\[ \]/,"[x]")} 1' "$tmp/fence-before.md")" "$tmp/fence-before.md"
