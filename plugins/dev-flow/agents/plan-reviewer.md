@@ -1,7 +1,7 @@
 ---
 name: plan-reviewer
-description: Strong-model plan reviewer. Use after plan-check passes to judge a .claude/plans plan against its spec and the code it touches. Replies PASS or REVISE with cited findings. Read-only.
-model: opus
+description: Plan reviewer. Use after plan-check passes to judge a .claude/plans plan against its spec and the code it touches. Replies PASS or REVISE with cited findings. Read-only.
+model: inherit
 tools: Read, Grep, Glob, mcp__plugin_dev-flow_codegraph
 ---
 

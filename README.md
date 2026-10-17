@@ -11,7 +11,7 @@ Quality-gate hooks, a guard on your guidance files, bundled MCP servers and nine
 
 ## Why dev-flow
 
-Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has Sonnet implement it one task at a time, then hands the finished diff back to Opus for review. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails; where an organization's managed settings block plugin hooks, dev-flow falls back to explicit, instruction-level checks instead (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)). It also bundles MCP servers and nine dev skills.
+Agents left to their own devices code fast and skip the parts that keep code maintainable: planning before the diff, and checking after it. dev-flow is a Claude Code plugin that puts a strong model in charge of the plan and the review, and a cheaper model in charge of typing it in. `/dev-flow:spec` has Opus write a spec and a test-first, task-by-task plan you approve; replying `ok build` or running `/dev-flow:build` has an `implementer` build it one task at a time on the model and effort the plan names for that task, then hands the finished diff to the `reviewer` on the plan's `Review:` model; a job the plan does not route runs on your session's current model and effort. Two hooks enforce the parts an agent would otherwise skip: a pre-write guard blocks unapproved edits to `AGENTS.md`/`CLAUDE.md`/`.claude/rules/*.md`, and a stop gate blocks "done" while `.claude/test-cmd` fails; where an organization's managed settings block plugin hooks, dev-flow falls back to explicit, instruction-level checks instead (see [Managed settings: hooks disabled by your organization](#managed-settings-hooks-disabled-by-your-organization)). It also bundles MCP servers and nine dev skills.
 
 ## Getting Started
 
@@ -195,8 +195,9 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 ```text
 /dev-flow:spec add rate limiting to the ticket search API
    -> Opus checks 7 ambiguity categories against the code; only a blocking unknown stops to ask you (one message, at most five questions)
+   -> Opus proposes a model and effort for the plan review, each task and the final review; the summary lists them
    -> plan-check validates the plan; findings go back to the architect, at most 3 times
-   -> Opus plan-reviewer checks the plan against the spec and the code; REVISE goes back to the architect, at most 2 times, then to you
+   -> plan-reviewer, on the plan's Plan review: model (never below sonnet high), checks the plan against the spec and the code; REVISE goes back to the architect, at most 2 times, then to you
    -> review and edit .claude/plans/<slug>.md; answer any question to override its default
    -> reply "ok build", or run /dev-flow:build <slug> yourself
 ```
@@ -205,9 +206,9 @@ Three peer paths. The hooks (guard, per-edit checks, stop gate, compaction snaps
 
 | Command | Use it when | What it does |
 |---|---|---|
-| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. Opus `plan-reviewer` then checks the plan against the spec and the code ([Plan review](#plan-review)). |
-| `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on Sonnet `implementer`, review on Opus `reviewer`. |
-| `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet asks branch (default) or worktree and whether to start from the current (default) or the default branch, runs tasks via `implementer` there, then `verify-done`, then Opus `reviewer`. Never merges or pushes (`commands/build.md` steps 2–7). |
+| `/dev-flow:spec <feature>` | you want an approved plan before any code | Opus `spec-architect` investigates, runs the [clarification check](#clarification-check), writes `.claude/specs/<slug>.md` (ending in "Assumptions and open questions") + `.claude/plans/<slug>.md` with test-first tasks. No code. `plan-reviewer`, on the model and effort the plan names, then checks the plan against the spec and the code ([Plan review](#plan-review)). |
+| `ok build` (reply after spec) | the plan is right; keep going in this conversation | Runs the build procedure inline: orchestration on the current model, coding on `implementer` at each task's `Model:` and `Effort:`, review on `reviewer` at the plan's `Review:`. |
+| `/dev-flow:build <slug>` | you want the build phase orchestrated by the cheaper model | Sonnet asks branch (default) or worktree and whether to start from the current (default) or the default branch, runs tasks via `implementer` there at each task's model and effort, then `verify-done`, then `reviewer` at the plan's `Review:` model and effort. Never merges or pushes (`commands/build.md` steps 2–7). |
 | `/dev-flow:onboard` | first time in a repo | CodeGraph index, then guidance file + rules, then verified hook commands, pausing at every guarded write. |
 
 Plans and specs live in `.claude/specs/` and `.claude/plans/` (previously under `docs/`); they are local work product, not committed, so add both to your repo's `.gitignore` (otherwise they show as untracked changes and make the stop gate run tests on Q&A turns). If you choose a worktree when the build asks, it is created at `.claude/worktrees/<slug>` on a new branch from the current or the default branch, whichever you pick, with copies of the plan and spec; gitignore `.claude/worktrees/` too. New branches, from the build or the `git-workflow` skill, are named `[<prefix>/]<type>/<name>`: `<type>` is `feature`, `fix`, `chore` or `refactor`, picked from what the work is, and `<name>` is the plan slug or a short slug. To give a project a prefix, commit a one-line `.claude/branch-prefix` file, for example `team-web`, so a feature branch becomes `team-web/feature/<name>`. Only the branch carries the prefixes; a worktree's directory stays `.claude/worktrees/<name>`.
@@ -236,9 +237,9 @@ Model pinning per stage is documented in frontmatter but not verified live — s
 | `/dev-flow:init-codegraph` | Command | Builds/refreshes the local CodeGraph index for this repo. |
 | `/dev-flow:threat-model [scope]` | Command | Maps the API surface to OWASP API Top 10 / CWE with cited evidence via `threat-modeler`; saves `docs/threats/<slug>.md` for review. Report-only. |
 | `spec-architect` (Opus) | Agent | Investigates, resolves ambiguities, writes spec and plan. |
-| `plan-reviewer` (Opus) | Agent | Judges a plan that passed plan-check against its spec and the code it touches; replies `PASS` or `REVISE` with cited findings. Read-only allowlist (Read, Grep, Glob, codegraph). |
-| `implementer` (Sonnet) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. Tool allowlist: read, edit, write, Bash, codegraph and context7; no web fetch or search, no subagents, no semble or browser tools. |
-| `reviewer` (Opus) | Agent | Diff review against spec. No shell or file-writing tools (Read, Grep, Glob, codegraph), so it cannot change the tree or git state; `/dev-flow:build` passes in the diff, commit log and test-command result. |
+| `plan-reviewer` (routed) | Agent | Judges a plan that passed plan-check against its spec and the code it touches; replies `PASS` or `REVISE` with cited findings. Read-only allowlist (Read, Grep, Glob, codegraph). |
+| `implementer` (routed) | Agent | Implements one plan task test-first, escalates with `BLOCKED`. Tool allowlist: read, edit, write, Bash, codegraph and context7; no web fetch or search, no subagents, no semble or browser tools. |
+| `reviewer` (routed) | Agent | Diff review against spec. No shell or file-writing tools (Read, Grep, Glob, codegraph), so it cannot change the tree or git state; `/dev-flow:build` passes in the diff, commit log and test-command result. |
 | `threat-modeler` (Opus) | Agent | Read-only and offline (no file-writing, shell or web tools); returns the threat model as text. |
 | `code-intel` | Skill | Picks Semble, CodeGraph, Context7, DevTools or `rg`. |
 | `investigate` | Skill | Read-only, cited codebase Q&A. |
@@ -381,7 +382,7 @@ Verified by running both scripts against a throwaway repo; not yet observed in a
 
 `/dev-flow:spec` writes `.claude/plans/<slug>.md` in a fixed format, and `plugins/dev-flow/scripts/plan-check.sh` checks it mechanically. The format has one definition, `plugins/dev-flow/scripts/plan-schema.sh`; `plan-check.sh --template` prints the plan skeleton from it, and that is what `spec-architect` fills in. The checks are structural only: they never judge whether a plan is good. Whether a plan is right is judged by `plan-reviewer`; see [Plan review](#plan-review).
 
-The header is every line before the first `## ` heading: `Status:` (`DRAFT`, `APPROVED`, `IN_PROGRESS` or `DONE`), `Approved:` (`yes` or `no`), `Spec:` (a repo-relative path that exists), each exactly once, plus optional `Override:` lines. `## Tasks` holds `### Task N: <title>` sections numbered 1..n without gaps. Each starts with a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:`, with optional `Change:`, `Depends on:` and `Risk:`. A `Files:` entry is `- <verb> <repo-relative path>` with the verb `create`, `modify`, `delete`, `rename` (written `- rename <old> -> <new>`) or `test`. A `Done when:` item of the form ``- run `<command>` and expect <result>`` is a verify command. `## Deviations` holds one-line entries `- Task N: <text>`. A task that cannot be done is recorded as `- Task N: BLOCKED: <reason>`; you resolve it by rewriting the line as `- Task N: RESOLVED: <decision>`. Who writes what:
+The header is every line before the first `## ` heading: `Status:` (`DRAFT`, `APPROVED`, `IN_PROGRESS` or `DONE`), `Approved:` (`yes` or `no`), `Spec:` (a repo-relative path that exists), each exactly once, plus an optional `Plan review: <model> <effort>` line for the plan reviewer (`sonnet` or `opus` with `high`, `xhigh` or `max`, never lower), an optional `Review: <model> <effort>` line for the final reviewer, and optional `Override:` lines. `## Tasks` holds `### Task N: <title>` sections numbered 1..n without gaps. Each starts with a `- [ ] Done` checkbox, then the labels `Objective:`, `Files:`, `Test first:`, `Test command:` (one backticked command) and `Done when:`, with optional `Change:`, `Depends on:`, `Risk:`, `Model:` (`haiku`, `sonnet` or `opus`) and `Effort:` (`low`, `medium`, `high`, `xhigh` or `max`). The commands pass these to the Agent tool's `model` and `effort` parameters; a missing line means the session's current model and effort (see [Model routing](#model-routing)). A `Files:` entry is `- <verb> <repo-relative path>` with the verb `create`, `modify`, `delete`, `rename` (written `- rename <old> -> <new>`) or `test`. A `Done when:` item of the form ``- run `<command>` and expect <result>`` is a verify command. `## Deviations` holds one-line entries `- Task N: <text>`. A task that cannot be done is recorded as `- Task N: BLOCKED: <reason>`; you resolve it by rewriting the line as `- Task N: RESOLVED: <decision>`. Who writes what:
 
 | Writer | Writes |
 |---|---|
@@ -395,6 +396,8 @@ The header is every line before the first `## ` heading: `Status:` (`DRAFT`, `AP
 Status: DRAFT
 Approved: no
 Spec: .claude/specs/greeting.md
+Plan review: sonnet high
+Review: sonnet medium
 
 ## Tasks
 
@@ -416,6 +419,10 @@ Done when:
 - run `bash tests/greet.sh` and expect exit 0
 
 Risk: low
+
+Model: haiku
+
+Effort: low
 ```
 
 Usage:
@@ -453,6 +460,7 @@ Output, in this order: `plan=`, `status=`, `approved=`, `open=<N>: <title>` for 
 | `depends-forward` | error | `Depends on` names this task or a later one |
 | `depends-malformed` | error | `Depends on` is not `none` or a comma-separated list of positive integers |
 | `risk-value` | error | `Risk` is not `low`, `medium` or `high` |
+| `route-value` | error | a task's `Model:` is not `haiku`, `sonnet` or `opus` or its `Effort:` is not `low`, `medium`, `high`, `xhigh` or `max`; or a header `Review:` or `Plan review:` line is repeated or is not `<model> <effort>` from those sets, where `Plan review:` takes only `sonnet` or `opus` with `high`, `xhigh` or `max` |
 | `test-command-empty` | error | `Test command:` has no non-empty backticked span |
 | `verify-toolchain` | error | a verify command's first word cannot run in this repo's toolchain (below) |
 | `placeholder` | error | a placeholder outside backticks and fences (below) |
@@ -620,7 +628,7 @@ The check lives in `agents/spec-architect.md`, because settling categories from 
 
 ### Plan review
 
-`plan-reviewer` is an Opus subagent that judges a plan against its spec and the code before any code is written.
+`plan-reviewer` is a subagent, run on the plan's `Plan review:` model and effort (never below `sonnet high`), or on the session's model when the plan has none, that judges a plan against its spec and the code before any code is written.
 
 - **When it runs.** `/dev-flow:spec` step 4, only after plan-check exits 0. The top-level session dispatches it, never `spec-architect`, so it works where a subagent cannot spawn subagents.
 - **The seven checks.**
@@ -633,10 +641,10 @@ The check lives in `agents/spec-architect.md`, because settling categories from 
   - `risk`: money, auth, sessions, secrets, migrations and data deletion tasks have a rollback step or a failure-path test.
 - **No overlap with plan-check.** It never re-checks plan-check rules, and the duplication audit found no rule to move into plan-check.
 - **Reply contract.** `PASS`, or `REVISE` followed by lines of the form `N. [check] path:line — Task N: ... If shipped as written: ... Fix: ...`.
-- **The loop.** The architect fixes each finding or writes `Disputed N: <reason>`, plan-check re-runs, and the reviewer looks again. At most 2 revisions, so at most 3 Opus reviews; then the summary escalates the findings under `Plan review: unresolved`.
+- **The loop.** The architect fixes each finding or writes `Disputed N: <reason>`, plan-check re-runs, and the reviewer looks again. At most 2 revisions, so at most 3 reviews; then the summary escalates the findings under `Plan review: unresolved`.
 - **Advisory.** The verdict does not stop you replying `ok build`, and `/dev-flow:build` does not gate on it.
 - **Code lookup.** codegraph when `.codegraph/` exists, otherwise Grep and Read.
-- **Cost.** Always-on: one agent description. On invoke: the longer spec command and one to three Opus reviews per planning round.
+- **Cost.** Always-on: one agent description. On invoke: the longer spec command and one to three plan reviews per planning round.
 
 | Claim | How it is enforced | Holds in hookless mode? |
 |---|---|---|
@@ -777,12 +785,32 @@ Nothing in this release calls the validator yet: it is the gate the planned secu
 | Stage | Model |
 |---|---|
 | `/dev-flow:spec` and `spec-architect` | Opus |
-| `plan-reviewer` | Opus |
-| `/dev-flow:build` orchestration and `implementer` | Sonnet |
-| `reviewer` | Opus |
+| `plan-reviewer` | the plan's `Plan review: <model> <effort>`, never below `sonnet high`; the session's model when the plan has none |
+| `/dev-flow:build` orchestration | Sonnet |
+| `implementer` | each task's `Model:` and `Effort:`; the session's model when the plan has none |
+| `reviewer` | the plan's `Review: <model> <effort>`; the session's model when the plan has none |
 | `/dev-flow:threat-model` and `threat-modeler` | Sonnet orchestrates; Opus models |
 
 Agent-level `model:` pins each stage even if the session started on another model. To change it, edit the `model:` line in `agents/*.md` and `commands/*.md` (`opus`, `sonnet`, `haiku`, a full model ID, or `inherit`).
+
+#### Per-job routing
+
+`spec-architect` writes `Plan review:` and `Review:` header lines and `Model:` (`haiku`, `sonnet` or `opus`) and `Effort:` (`low`, `medium`, `high`, `xhigh` or `max`) on every task not titled `Manual:`, using the rubric in `plugins/dev-flow/agents/spec-architect.md`. The spec's Model routing table gives the reason for each choice. The `/dev-flow:spec` summary lists them, and you change them by editing those plan lines before `ok build`.
+
+`Plan review:` is limited to `sonnet` or `opus` at `high`, `xhigh` or `max`, because the plan reviewer is the independent check on the architect's own plan. `/dev-flow:spec` reads it before the first review and keeps it for the whole round.
+
+The commands pass the values as the Agent tool's per-invocation `model` and `effort`. A missing line passes nothing. `implementer`, `plan-reviewer` and `reviewer` have `model: inherit` and no `effort:`, so an unrouted job runs on the session's current model and effort. Under `/dev-flow:build` that may be the Sonnet that the command's own `model:` frontmatter makes current (not verified). Plans written before 1.24.0 therefore no longer pin Sonnet and Opus.
+
+Per the Claude Code subagent and model-configuration docs (read 2026-10-17):
+
+- the per-invocation `model` overrides frontmatter, but `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` ignores it;
+- how `CLAUDE_CODE_SUBAGENT_MODEL` interacts with `inherit` is not documented;
+- `CLAUDE_CODE_EFFORT_LEVEL` overrides `effort`;
+- the `effort` parameter needs Claude Code 2.1.292 or later, and without it the commands omit effort and say so;
+- a level a model does not support falls back to the highest supported level at or below it;
+- aliases resolve per provider and against an organization's `availableModels` allowlist.
+
+Not verified live in this repo. The build reports what it passed, not what ran.
 
 #### `ok build` vs `/dev-flow:build`
 
@@ -791,10 +819,10 @@ Agent-level `model:` pins each stage even if the session started on another mode
 | | Reply `ok build` | Run `/dev-flow:build <slug>` |
 |---|---|---|
 | Orchestration (reading the plan, dispatching tasks, running the loop) | Stays on whichever model is running the session — Opus, since that's what `/dev-flow:spec` pinned | Switches to Sonnet, per that command's own `model:` frontmatter |
-| Actual coding (`implementer` subagent) | Sonnet | Sonnet |
-| Final review (`reviewer` subagent) | Opus | Opus |
+| Actual coding (`implementer` subagent) | each task's `Model:` and `Effort:`, else the session's (Opus here) | each task's `Model:` and `Effort:`, else the session's (probably Sonnet here) |
+| Final review (`reviewer` subagent) | the plan's `Review:`, else the session's | same |
 
-So `ok build` saves you retyping the slug and slash command, at the cost of the orchestration chatter running on the pricier model. The coding itself is Sonnet either way, since that's pinned on the `implementer` agent regardless of who invoked it. `/dev-flow:spec` says this out loud before proceeding. This depends on Claude Code actually pinning a command's model on explicit invocation, as its frontmatter documents — I haven't verified that live in this sandbox (same caveat as the model-routing section below).
+So `ok build` saves you retyping the slug and slash command, at the cost of the orchestration chatter running on the pricier model. Routed tasks run on their own model either way, since the orchestrator passes it on every dispatch; unrouted ones follow the session's model. `/dev-flow:spec` says this out loud before proceeding. This depends on Claude Code actually pinning a command's model on explicit invocation, as its frontmatter documents — I haven't verified that live in this sandbox (same caveat as the model-routing section below).
 
 Also: `spec-architect`, `plan-reviewer`, `implementer` and `reviewer` are subagents. A subagent can spawn further subagents only when its `tools:` list includes `Agent` (checked live on Claude Code 2.1.285), and none of these four lists it, so they do not. `/dev-flow:spec` dispatches `plan-reviewer` itself rather than through `spec-architect`. The orchestrator is always the top-level session, never a subagent, so the `ok build` path (running build.md's procedure inline in the same conversation) and the `/dev-flow:build` path both work the same way here.
 
@@ -839,6 +867,7 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 
 ### Known limits
 
+- Per-job routing (`Model:`, `Effort:`, `Plan review:`, `Review:`) is an instruction to the orchestrator, not a hook: the implementer gate does not check the model. That the Agent tool's `model` and `effort` parameters and `model: inherit` take effect as documented is not verified live here.
 - Implementer plan-writing (ticks, Files and Deviations lines, BLOCKED entries), resume at the first `open=` task, scope-drift review and the stop-gate plan check are covered by offline tests of the scripts but are not verified inside a live Claude Code session.
 - plan-reviewer findings are model judgement and advisory (`/dev-flow:build` does not gate on them); the review loop and its 2-revision cap are command instructions; the loop inside `/dev-flow:spec` has not been run live; the agent is checked only by the two synthetic eval cases and by the offline test of its frontmatter and wiring.
 - Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn (the implementer gate has one user-reported live denial, see Known limits and the Implementer gate section; the other hooks have none), and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.

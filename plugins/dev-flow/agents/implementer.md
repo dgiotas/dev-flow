@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Cost-efficient coder. Use to implement exactly one task from a plan in .claude/plans, test first, then report back. Does not redesign; escalates when the plan is wrong or unclear.
-model: sonnet
+model: inherit
 tools: Read, Grep, Glob, Edit, Write, MultiEdit, Bash, TodoWrite, mcp__plugin_dev-flow_codegraph, mcp__plugin_dev-flow_context7
 ---
 

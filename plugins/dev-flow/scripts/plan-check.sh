@@ -33,12 +33,16 @@ if [ "$tpl" = 1 ]; then
   [ "$json$strict" = 00 ] && [ -z "$plan" ] || die usage "usage: plan-check.sh --template; it takes no other flag or plan"
   verbs=$(printf '%s\n' "$PLAN_VERBS" | sed -e 's/^rename|//' -e 's/|rename$//' -e 's/|rename|/|/')
   sed -e "s#@VERBS@#$verbs#" -e "s#@RISK@#$PLAN_RISK#" \
-      -e "s#@STATUS@#${PLAN_STATUS%%|*}#" -e "s#@APPROVED@#${PLAN_APPROVED##*|}#" <<'TPL'
+      -e "s#@STATUS@#${PLAN_STATUS%%|*}#" -e "s#@APPROVED@#${PLAN_APPROVED##*|}#" \
+      -e "s#@MODEL@#$PLAN_MODEL#g" -e "s#@EFFORT@#$PLAN_EFFORT#g" \
+      -e "s#@RVMODEL@#$PLAN_REVIEWER_MODEL#g" -e "s#@RVEFFORT@#$PLAN_REVIEWER_EFFORT#g" <<'TPL'
 # Plan: <title>
 
 Status: @STATUS@
 Approved: @APPROVED@
 Spec: .claude/specs/<slug>.md
+Plan review: <@RVMODEL@> <@RVEFFORT@>
+Review: <@MODEL@> <@EFFORT@>
 
 ## Tasks
 
@@ -63,6 +67,10 @@ Done when:
 
 Risk: <@RISK@>
 
+Model: <@MODEL@>
+
+Effort: <@EFFORT@>
+
 ### Task 2: <title>
 
 - [ ] Done
@@ -80,6 +88,10 @@ Done when:
 - <observable check>
 
 Depends on: 1
+
+Model: <@MODEL@>
+
+Effort: <@EFFORT@>
 
 ## Acceptance criteria
 
@@ -230,6 +242,12 @@ function check_header(key, count, val, ln, ln2, code, set,   ok) {
   if (count > 1) { add(ln2, "error", code, "-", key ": line appears more than once"); return }
   if (set != "" && !inlist(val, set)) add(ln, "error", code, "-", key ": " val " is not one of " set)
 }
+function check_route(key, cnt, v, ln, ln2, models, efforts,   w, nw) {
+  if (cnt > 1) { add(ln2, "error", "route-value", "-", key ": line appears more than once"); return }
+  if (cnt == 0) return
+  nw = split(v, w, / +/)
+  if (nw != 2 || !inlist(w[1], models) || !inlist(w[2], efforts)) add(ln, "error", "route-value", "-", key ": must be <model> <effort> with the model one of " models " and the effort one of " efforts ", got " v)
+}
 function check_spec(path, rel, specline,   r, line, n, insec, c, cat, cells) {
   if (!(rel in ISF)) { add(specline, "error", "spec-missing", "-", "no spec at " path); return }
   r = (getline line < path)
@@ -377,6 +395,7 @@ function finish_task(   i, k, nl, lab, empty) {
   }
 }
 BEGIN {
+  LABEL_RE = "^(" ENVIRON["PLAN_REQUIRED"] "|" ENVIRON["PLAN_OPTIONAL"] "):( |$)"
   while ((getline row < tbl) > 0) {
     split(row, kv, "\t")
     EX[kv[2]] = 1
@@ -451,7 +470,7 @@ BEGIN {
     expect_box = 0
   }
   if (sec == "tasks" && cur > 0) {
-    if ($0 ~ /^(Objective|Files|Test first|Test command|Change|Done when|Depends on|Risk):( |$)/) {
+    if ($0 ~ LABEL_RE) {
       fld = $0; sub(/:.*/, "", fld)
       val = $0; sub(/^[^:]*:/, "", val); val = trim(val)
       CNT[cur, fld]++
@@ -466,6 +485,8 @@ BEGIN {
       }
       if (fld == "Depends on") check_depends(cur, NR, val)
       else if (fld == "Risk" && !inlist(val, ENVIRON["PLAN_RISK"])) add(NR, "error", "risk-value", cur, "Risk must be one of " ENVIRON["PLAN_RISK"] ", got " val)
+      else if (fld == "Model" && !inlist(val, ENVIRON["PLAN_MODEL"])) add(NR, "error", "route-value", cur, "Model must be one of " ENVIRON["PLAN_MODEL"] ", got " val)
+      else if (fld == "Effort" && !inlist(val, ENVIRON["PLAN_EFFORT"])) add(NR, "error", "route-value", cur, "Effort must be one of " ENVIRON["PLAN_EFFORT"] ", got " val)
     } else if ($0 !~ /^[ \t]*$/) {
       if (fld == "Objective" || fld == "Test first" || fld == "Change") TXT[cur, fld] = trim(TXT[cur, fld] " " $0)
       else if (fld == "Files") {
@@ -484,6 +505,8 @@ BEGIN {
     else if (index($0, "Approved:") == 1) { an++; if (an == 1) { av = trim(substr($0, 10)); gsub(/\t/, " ", av); al = NR } else if (an == 2) al2 = NR }
     else if (index($0, "Override:") == 1) parse_override(NR, $0)
     else if (index($0, "Spec:") == 1) { pn++; if (pn == 1) { pv = trim(substr($0, 6)); pl = NR } else if (pn == 2) pl2 = NR }
+    else if (index($0, "Plan review:") == 1) { qn++; if (qn == 1) { qv = trim(substr($0, 13)); gsub(/\t/, " ", qv); ql = NR } else if (qn == 2) ql2 = NR }
+    else if (index($0, "Review:") == 1) { rn++; if (rn == 1) { rv = trim(substr($0, 8)); gsub(/\t/, " ", rv); rl = NR } else if (rn == 2) rl2 = NR }
   }
 }
 END {
@@ -504,6 +527,8 @@ END {
   else if (index("/" pv "/", "/../") > 0) add(pl, "error", "header-spec", "-", "Spec: path must not contain a .. segment, got " pv)
   else if (pv !~ /^[A-Za-z0-9_.@+\/-]+$/) add(pl, "error", "header-spec", "-", "Spec: path has characters outside [A-Za-z0-9_.@+/-]")
   else check_spec(root "/" pv, pv, pl)
+  check_route("Plan review", qn, qv, ql, ql2, ENVIRON["PLAN_REVIEWER_MODEL"], ENVIRON["PLAN_REVIEWER_EFFORT"])
+  check_route("Review", rn, rv, rl, rl2, ENVIRON["PLAN_MODEL"], ENVIRON["PLAN_EFFORT"])
 
   for (i = 1; i <= nd; i++)
     if (D_NUM[i] < 1 || D_NUM[i] > n) add(D_LINE[i], "error", "deviation-line", "-", "Deviations line names Task " D_NUM[i] ", which does not exist")
