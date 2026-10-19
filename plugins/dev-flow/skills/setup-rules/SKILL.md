@@ -1,6 +1,6 @@
 ---
 name: setup-rules
-description: Analyze a repository and generate or update its agent guidance - AGENTS.md (preferred when present) or CLAUDE.md, plus path-scoped rules in .claude/rules/ and the .claude/test-cmd and .claude/lint-cmd hook commands. Use when the user asks to set up Claude for a project, create or improve AGENTS.md or CLAUDE.md, document conventions for the agent, onboard an agent to a repo, wire up checks for a containerised toolchain, or asks "what rules should this repo have". Produces concise, verified, repo-specific guidance rather than generic advice.
+description: 'Generate or update agent guidance for a repo: AGENTS.md (preferred when present) or CLAUDE.md, path-scoped .claude/rules/, and the .claude/test-cmd and .claude/lint-cmd hook commands. Use when the user asks to set up Claude for a project, improve AGENTS.md or CLAUDE.md, document conventions for agents, wire checks for a containerised toolchain, or "what rules should this repo have".'
 ---
 
 # Set up project rules

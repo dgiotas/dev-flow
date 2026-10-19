@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Handle branching, commits, pull requests and review feedback cleanly. Use whenever the user asks to commit, create a branch, write a commit message, open or describe a PR, split a change into commits, rebase, resolve conflicts, or respond to code-review comments, even if they only say "ship it", "push this" or "address the review". When it creates a new branch it asks whether to use a branch (default) or a git worktree and whether to start from the current branch (default) or the default branch, and it does not list, remove or clean up worktrees. Never pushes, merges or force-pushes without explicit approval.
+description: Branches, commits, pull requests and review feedback. Use when the user asks to commit, branch, write a commit message, open or describe a PR, split commits, rebase, resolve conflicts or address review comments, or says "ship it", "push this" or "address the review". Asks before using a worktree or the default branch as base; never removes worktrees. Never pushes, merges or force-pushes without explicit approval.
 ---
 
 # Git workflow

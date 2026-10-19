@@ -1,6 +1,6 @@
 ---
 name: db-migration
-description: Design, write and review database schema migrations and data backfills safely, with rollback and zero-downtime in mind. Use whenever the user adds, alters or drops tables, columns, indexes or constraints, writes a migration file (Laravel, Doctrine, Flyway, Liquibase, Alembic, Prisma, raw SQL), backfills data, or asks "is this migration safe". Stops for confirmation before anything destructive.
+description: Design, write and review schema migrations and data backfills with rollback and zero downtime. Use when adding, altering or dropping tables, columns, indexes or constraints, writing a migration (Laravel, Doctrine, Flyway, Liquibase, Alembic, Prisma, raw SQL), backfilling data, or asked "is this migration safe". Stops for confirmation before anything destructive.
 ---
 
 # Database migrations

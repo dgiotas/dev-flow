@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: 'Review code or a diff for security problems: authentication and sessions, authorization, injection, secrets, sensitive data and payment-card handling, input validation, dependency risk, and unsafe defaults. Use when the user asks for a security review or audit, touches auth, JWT, sessions, payments, PCI-related code, file uploads, user input, crypto or external calls, or asks "is this safe" or "any vulnerabilities". For a whole-API-surface threat model use /dev-flow:threat-model instead. Report-only unless told to fix.'
+description: 'Review code or a diff for security problems: auth and sessions, authorization, injection, secrets, sensitive and card data, input validation, dependencies and unsafe defaults. Use when asked for a security review or audit, "is this safe" or "any vulnerabilities", or when a change touches auth, JWT, payments, PCI code, uploads, user input, crypto or external calls. For a whole-API threat model use /dev-flow:threat-model. Report-only unless told to fix.'
 ---
 
 # Security review

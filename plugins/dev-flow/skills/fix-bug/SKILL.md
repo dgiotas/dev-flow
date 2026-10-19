@@ -1,6 +1,6 @@
 ---
 name: fix-bug
-description: Fix a bug with a reproducing test first, a root-cause explanation, a minimal fix, and a quality gate. Use whenever the user reports a bug, a failing test, an exception, a regression, wrong output, or says "fix this", "this is broken", "why does this fail", "make this test pass", even if they do not mention TDD. Combines systematic debugging and test-driven development into one flow.
+description: 'Fix a bug test-first: a failing test that reproduces it, the root cause, a minimal fix, then the quality gate. Use when the user reports a bug, failing test, exception, regression or wrong output, or says "fix this", "this is broken", "why does this fail" or "make this test pass".'
 ---
 
 # Fix a bug: RED, root cause, GREEN, gate

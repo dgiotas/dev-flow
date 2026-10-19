@@ -1,6 +1,6 @@
 ---
 name: threat-modeler
-description: "Strong-model, read-only and offline threat modeller. Maps a repo's API surface (routes, handlers, consumers, jobs, CLI) to the OWASP API Security Top 10 and CWE classes with cited path:line evidence. Use via /dev-flow:threat-model. Returns the threat model as text and writes nothing. It is not a diff review; for that use the security-review skill."
+description: Strong-model, read-only, offline threat modeller. Maps a repo's API surface to the OWASP API Security Top 10 and CWE classes with cited path:line evidence and returns it as text. Use via /dev-flow:threat-model; for a diff review use the security-review skill.
 model: opus
 tools: Read, Grep, Glob, mcp__plugin_dev-flow_codegraph
 ---
