@@ -2,21 +2,17 @@
   "mcpServers": {
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": ["-y", "@upstash/context7-mcp@4.4.2"]
     },
     "semble": {
       "command": "uvx",
-      "args": ["--from", "semble[mcp]", "semble"]
+      "args": ["--from", "semble[mcp]==0.7.0", "semble"]
     },
     "codegraph": {
       "type": "stdio",
       "command": "codegraph",
       "args": ["serve", "--mcp"],
       "env": { "CODEGRAPH_TELEMETRY": "0" }
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["chrome-devtools-mcp@latest"]
     }
   }
 }

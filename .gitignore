@@ -1,5 +1,7 @@
 .claude/.approved-writes/
 .claude/.stop-gate-state
+.claude/.stop-gate-pass
+.claude/.stop-gate-plan
 .claude/stop-gate-giveup.log
 .codegraph/
 .claude/.devflow-state.json

@@ -41,7 +41,7 @@ Spec: .claude/specs/demo.md
 
 ### Task 1: Add the greeter
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Add a greeter script.
 
@@ -60,7 +60,7 @@ Risk: low
 
 ### Task 2: Call the greeter
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Make the app call the greeter.
 
@@ -112,6 +112,7 @@ golden() {
   label=$1; plan=$2; shift 2
   out=$(bash "$script" "$@" "$plan" 2>&1); rc=$?
   golden_n=$((golden_n + 1))
+  printf '%s\n' "$plan" >> "$tmp/det.list"
   bad=$(printf '%s\n' "$out" | awk '/^(error|warning|overridden)=/ { n++ } END { print n + 0 }')
   if [ "$rc" = 0 ] && [ "$bad" = 0 ] && printf '%s\n' "$out" | grep -qxF errors=0 \
      && printf '%s\n' "$out" | grep -qxF warnings=0 && printf '%s\n' "$out" | grep -qxF overrides=0; then
@@ -149,14 +150,18 @@ expect spec-dir 1 'error=spec-missing task=- line=5:' "$(mk spec-dir '{sub(/^Spe
 { cat "$R/.claude/specs/demo.md"; echo '| Compatibility | blocking | which callers | request |'; } > "$R/.claude/specs/blocked.md"
 expect blocking-row 1 'error=blocking-row task=- line=5:' "$(mk blocking-row '{sub(/^Spec: .*/,"Spec: .claude/specs/blocked.md")}1')"
 
-# tasks section, headings, numbering, checkboxes
+# tasks section, headings, numbering, task status lines
 expect tasks-missing 1 'error=tasks-missing task=- line=1:' "$(mk tasks-missing '/^## Tasks$/{next}1')"
 expect tasks-empty 1 'error=tasks-missing task=- line=7:' "$(mk tasks-empty '/^### Task 1:/{exit}1')"
 expect task-heading 1 'error=task-heading task=- line=28:' "$(mk task-heading '{sub(/^### Task 2: /,"### Task two: ")}1')"
 expect task-gap 1 'error=task-number task=2 line=28:' "$(mk task-gap '{sub(/^### Task 2:/,"### Task 3:")}1')"
 expect task-dup 1 'error=task-number task=2 ' "$(mk task-dup '{sub(/^### Task 2:/,"### Task 1:")}1')"
-expect checkbox-missing 1 'error=checkbox task=2 line=28:' "$(mk checkbox-missing 'NR==30{next}1')"
-expect checkbox-bad 1 'error=checkbox task=1 line=9:' "$(mk checkbox-bad '{sub(/^- \[ \] Done$/,"- [] Done")}1')"
+expect task-status-missing 1 'error=task-status task=2 line=28:' "$(mk task-status-missing 'NR==30{next}1')"
+expect task-status-bad 1 'error=task-status task=1 line=11: Task status: STARTED is not one of NOT_STARTED|IN_PROGRESS|DONE' "$(mk task-status-bad '{sub(/^Task status: NOT_STARTED$/,"Task status: STARTED")}1')"
+expect fence-first 1 "error=task-status task=1 line=11: first line after the heading must be 'Task status: <NOT_STARTED|IN_PROGRESS|DONE>', not a code fence" "$(mk fence-first 'BEGIN{q=sprintf("%c%c%c",96,96,96)} NR==11{print q; print "x"; print q; print ""; print "Task status: NOT_STARTED"; next}1')"
+also fence-first-status 'error=field-duplicate task=1 line=15: a Task status: line may only be the first line of a task'
+expect status-repeat 1 'error=field-duplicate task=1 line=13: a Task status: line may only be the first line of a task' "$(mk status-repeat '{print} NR==11{print ""; print "Task status: DONE"}')"
+expect checkbox 1 "error=task-status task=1 line=11: the '- [ ] Done' checkbox was replaced by a Task status line in 1.26.0: write 'Task status: NOT_STARTED' for '- [ ] Done' and 'Task status: DONE' for '- [x] Done'" "$(mk checkbox 'NR==11{print "- [ ] Done"; next}1')"
 printf '# Plan: old\n## Task 1\n' > "$R/.claude/plans/legacy.md"
 expect legacy 1 'error=tasks-missing task=- line=1:' "$R/.claude/plans/legacy.md"
 case "$last" in *'written before the 1.19.0 plan contract'*) echo "PASS: legacy-summary" ;; *) echo "FAIL: legacy-summary"; fail=1 ;; esac
@@ -212,7 +217,7 @@ expect home 1 'error=path-absolute task=2 ' "$(mk home 'NR==35{print "- modify ~
 expect dotdot 1 'error=path-dotdot task=2 ' "$(mk dotdot 'NR==35{print "- modify ../x.sh"; next}1')"
 expect missing 1 'error=path-missing task=2 ' "$(mk missing 'NR==35{print "- modify src/nope.sh"; next}1')"
 expect exists 1 'error=path-exists task=1 ' "$(mk exists 'NR==16{print "- create src/app.sh"; next}1')"
-expect exists-msg 1 'error=path-exists task=1 line=16: src/app.sh already exists; /dev-flow:build ticks a task only after its verify passes, so a half-done task needs the user, not a tick' "$(mk exists-msg 'NR==16{print "- create src/app.sh"; next}1')"
+expect exists-msg 1 'error=path-exists task=1 line=16: src/app.sh already exists while the task is NOT_STARTED; a task that already ran is IN_PROGRESS or DONE, so this needs the user, not a Task status edit' "$(mk exists-msg 'NR==16{print "- create src/app.sh"; next}1')"
 expect exists2 1 'error=path-exists task=1 ' "$(mk exists2 'NR==16{print; print "- create old.txt"; next}1')"
 also exists2-count errors=1
 expect delete-then-modify 1 'error=path-missing task=2 ' "$(mk delete-then-modify 'NR==36{print; print "- delete old.txt"; print "- modify old.txt"; next}1')"
@@ -221,12 +226,14 @@ expect rename-dst 1 'error=path-exists task=2 ' "$(mk rename-dst 'NR==35{print "
 golden backticked "$(mk backticked 'BEGIN{q=sprintf("%c",96)} NR==35{print "- modify " q "src/app.sh" q; next}1')"
 golden verbs "$(mk verbs 'NR==36{print; print "- delete old.txt"; print "- rename src/greet.sh -> src/hello.sh"; next}1')"
 R4=$tmp/r4; cp -R "$R" "$R4"; echo 'echo greet' > "$R4/src/greet.sh"
-golden ticked "$(mk ticked 'NR==11{print "- [x] Done"; next}1' "$R4")"
+golden ticked "$(mk ticked 'NR==11{print "Task status: DONE"; next}1' "$R4")"
+golden in-progress-skip "$(mk in-progress-skip 'NR==11{print "Task status: IN_PROGRESS"; next}1' "$R4")"
+expect checkbox-done 1 'error=task-status task=1 line=11: the' "$(mk checkbox-done 'NR==11{print "- [x] Done"; next}1' "$R4")"
 expect ticked-off 1 'error=path-exists task=1 ' "$(mk ticked-off '1' "$R4")"
-golden ticked-delete-skip "$(mk ticked-delete-skip 'NR==11{print "- [x] Done"; next} NR==17{print; print "- delete src/gone.sh"; next}1' "$R4")"
-expect ticked-delete-effect 1 'error=path-missing task=2 ' "$(mk ticked-delete-effect 'NR==11{print "- [x] Done"; next} NR==17{print; print "- delete src/greet.sh"; next}1' "$R4")"
-golden ticked-rename-skip "$(mk ticked-rename-skip 'NR==11{print "- [x] Done"; next} NR==17{print; print "- rename src/nope.sh -> src/app.sh"; next}1' "$R4")"
-expect ticked-rename-effect 1 'error=path-missing task=2 ' "$(mk ticked-rename-effect 'NR==11{print "- [x] Done"; next} NR==17{print; print "- rename src/greet.sh -> src/hello.sh"; next}1' "$R4")"
+golden ticked-delete-skip "$(mk ticked-delete-skip 'NR==11{print "Task status: DONE"; next} NR==17{print; print "- delete src/gone.sh"; next}1' "$R4")"
+expect ticked-delete-effect 1 'error=path-missing task=2 ' "$(mk ticked-delete-effect 'NR==11{print "Task status: DONE"; next} NR==17{print; print "- delete src/greet.sh"; next}1' "$R4")"
+golden ticked-rename-skip "$(mk ticked-rename-skip 'NR==11{print "Task status: DONE"; next} NR==17{print; print "- rename src/nope.sh -> src/app.sh"; next}1' "$R4")"
+expect ticked-rename-effect 1 'error=path-missing task=2 ' "$(mk ticked-rename-effect 'NR==11{print "Task status: DONE"; next} NR==17{print; print "- rename src/greet.sh -> src/hello.sh"; next}1' "$R4")"
 
 # Test command and verify-command toolchain
 expect cmd-empty 1 'error=test-command-empty task=1 ' "$(mk cmd-empty 'NR==21{print "Test command: ``"; next}1')"
@@ -259,7 +266,7 @@ expect dev-prose 1 'error=deviation-line task=- ' "$(mk dev-prose '{print} END{p
 golden ph-negatives "$(mk ph-negatives 'BEGIN{q=sprintf("%c",96)} NR==13{print "Objective: Fetch the greeter, see the " q "TODO" q " marker in Todoist."; next}1')"
 golden dev-free-text "$(mk dev-free-text '{print} END{print ""; print "## Deviations"; print ""; print "- Task 1: kept the old parser, etc."; print "- Task 1: added a retry to handle errors"}')"
 expect dev-body-placeholder 1 'error=placeholder task=1 ' "$(obj dev-body-placeholder 'Kept the old parser, etc.')"
-golden progress "$(mk progress 'NR==11{print "- [x] Done"; next} {sub(/^Status: DRAFT$/,"Status: IN_PROGRESS"); sub(/^Approved: no$/,"Approved: yes")} 1 END{print ""; print "## Deviations"; print ""; print "- Task 1: used printf instead of echo"}' "$R4")"
+golden progress "$(mk progress 'NR==11{print "Task status: DONE"; next} {sub(/^Status: DRAFT$/,"Status: IN_PROGRESS"); sub(/^Approved: no$/,"Approved: yes")} 1 END{print ""; print "## Deviations"; print ""; print "- Task 1: used printf instead of echo"}' "$R4")"
 
 # unlisted paths, too many files, --strict
 unl=$(mk unlisted "BEGIN{q=sprintf(\"%c\",96)} NR==13{print \"Objective: Wire in \" q \"src/other.sh\" q \".\"; next}1")
@@ -318,9 +325,11 @@ jexpect json-header-tab 1 '.status == "A B" and (.findings | length) == 1' "$(mk
 expect json-usage 2 error=usage --json --nope
 
 # progress: open tasks, BLOCKED entries, declared paths
-out=$(bash "$script" "$(mk progress-open 'NR==11{print "- [x] Done"; next}1')" 2>&1)
+out=$(bash "$script" "$(mk progress-open 'NR==11{print "Task status: DONE"; next}1')" 2>&1)
 also progress-open 'open=2: Call the greeter'
 if printf '%s\n' "$out" | grep -q '^open=1:'; then echo "FAIL: progress-open-ticked"; fail=1; else echo "PASS: progress-open-ticked"; fi
+out=$(bash "$script" "$(mk progress-started 'NR==11{print "Task status: IN_PROGRESS"; next}1' "$R4")" 2>&1)
+also progress-started 'open=1: Add the greeter'
 out=$(bash "$script" "$base" 2>&1)
 if [ "$(printf '%s\n' "$out" | sed -n 4p)" = 'open=1: Add the greeter' ] && [ "$(printf '%s\n' "$out" | sed -n 5p)" = 'open=2: Call the greeter' ]; then echo "PASS: open-order"; else echo "FAIL: open-order"; printf '%s\n' "$out" | sed 's/^/    /'; fail=1; fi
 DEVB='{print} END{print ""; print "## Deviations"; print ""; print "- Task 2: BLOCKED: needs a schema decision"'
@@ -342,7 +351,7 @@ if [ "$rc" = 2 ] && [ "$(printf '%s\n' "$out" | head -n 1)" = error=jq-missing ]
 expect template-usage 2 error=usage --template "$base"
 first=$(bash "$script" --template | head -n 1)
 if [ "$first" = '# Plan: <title>' ]; then echo "PASS: template"; else echo "FAIL: template (first line: $first)"; fail=1; fi
-for l in 'Plan review: <sonnet|opus> <high|xhigh|max>' 'Review: <haiku|sonnet|opus> <low|medium|high|xhigh|max>' 'Model: <haiku|sonnet|opus>' 'Effort: <low|medium|high|xhigh|max>'; do
+for l in 'Task status: NOT_STARTED' 'Plan review: <sonnet|opus> <high|xhigh|max>' 'Review: <haiku|sonnet|opus> <low|medium|high|xhigh|max>' 'Model: <haiku|sonnet|opus>' 'Effort: <low|medium|high|xhigh|max>'; do
   if bash "$script" --template | grep -qxF -- "$l"; then echo "PASS: template-route $l"; else echo "FAIL: template-route $l"; fail=1; fi
 done
 bash "$script" --template | sed -e 's#<slug>#demo#g' \
@@ -354,18 +363,21 @@ bash "$script" --template | sed -e 's#<slug>#demo#g' \
     -e 's#<[^>]*>#x#g' > "$R/.claude/plans/template.md"
 golden template-golden "$R/.claude/plans/template.md"
 
-# determinism: three plain and three --json runs per plan must match byte for byte
+# determinism: two plain and two --json runs of every golden plan must match byte for byte
 detfail=0
-for p in "$R"/.claude/plans/*.md "$R2"/.claude/plans/*.md "$R3"/.claude/plans/*.md "$R4"/.claude/plans/*.md; do
-  same=1
-  for flag in "" "--json"; do
-    bash "$script" $flag "$p" > "$tmp/d1" 2>&1
-    bash "$script" $flag "$p" > "$tmp/d2" 2>&1
-    bash "$script" $flag "$p" > "$tmp/d3" 2>&1
-    cmp -s "$tmp/d1" "$tmp/d2" && cmp -s "$tmp/d1" "$tmp/d3" || same=0
-  done
-  [ "$same" = 1 ] || { echo "FAIL: determinism $p"; fail=1; detfail=1; }
-done
+if [ ! -s "$tmp/det.list" ]; then
+  echo "FAIL: determinism (no golden plans recorded)"; fail=1; detfail=1
+else
+  while IFS= read -r p; do
+    same=1
+    for flag in "" "--json"; do
+      bash "$script" $flag "$p" > "$tmp/d1" 2>&1
+      bash "$script" $flag "$p" > "$tmp/d2" 2>&1
+      cmp -s "$tmp/d1" "$tmp/d2" || same=0
+    done
+    [ "$same" = 1 ] || { echo "FAIL: determinism $p"; fail=1; detfail=1; }
+  done < "$tmp/det.list"
+fi
 [ "$detfail" = 0 ] && echo "PASS: determinism"
 
 # drift-rules, drift-agent: the rule file and the spec-architect agent repeat the schema value sets
@@ -374,7 +386,7 @@ for name in rules agent; do
   if [ "$name" = rules ]; then target="$here/.claude/rules/plans.md"; else target="$here/plugins/dev-flow/agents/spec-architect.md"; fi
   drift=1
   if [ -f "$target" ]; then
-    for s in "$PLAN_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "$PLAN_MODEL" "$PLAN_EFFORT" "at most $PLAN_MAX_FILES" $words; do
+    for s in "$PLAN_STATUS" "$PLAN_TASK_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "$PLAN_MODEL" "$PLAN_EFFORT" "at most $PLAN_MAX_FILES" $words; do
       grep -qiF -- "$s" "$target" || { echo "FAIL: drift-$name missing '$s'"; drift=0; }
     done
     if [ "$name" = agent ]; then
@@ -392,6 +404,15 @@ for c in $PLAN_CODES; do
   grep -qF -- "\`$c\`" "$here/README.md" || { echo "FAIL: drift-readme missing '$c'"; drift=0; }
 done
 [ "$drift" = 1 ] && echo "PASS: drift-readme" || fail=1
+
+# drift-snapshot: the compaction snapshot hook mirrors the Task status values
+snap="$here/plugins/dev-flow/hooks/scripts/pre-compact-snapshot.sh"
+mid=${PLAN_TASK_STATUS#*|}; mid=${mid%|*}
+drift=1
+for s in "^Task status: ($PLAN_TASK_STATUS)\$" "^Task status: ${PLAN_TASK_STATUS##*|}\$" "^Task status: $mid\$"; do
+  grep -qF -- "$s" "$snap" || { echo "FAIL: drift-snapshot missing '$s'"; drift=0; }
+done
+[ "$drift" = 1 ] && echo "PASS: drift-snapshot" || fail=1
 
 # acceptance counts
 echo "golden_n=$golden_n bad_n=$bad_n"

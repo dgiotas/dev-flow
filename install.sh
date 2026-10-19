@@ -58,6 +58,7 @@ for arg in "$@"; do
   esac
 done
 REPO="dgiotas/dev-flow"
+CODEGRAPH_PKG="@colbymchenry/codegraph@1.6.2"
 here=""
 script="${BASH_SOURCE[0]:-}"
 if [ -n "$script" ] && [ -f "$(dirname "$script")/.claude-plugin/marketplace.json" ]; then
@@ -208,7 +209,7 @@ command -v jq     >/dev/null && ok "jq"         || bad "jq (needed by the hooks)
 command -v git    >/dev/null && ok "git"        || bad "git"
 command -v node   >/dev/null && ok "node $(node --version 2>/dev/null)" || warn "node 18+ not found: the Context7 and Chrome DevTools MCP servers will not start, and npm (needed for CodeGraph) requires it too"
 command -v uvx    >/dev/null && ok "uv/uvx"     || warn "uv not found: Semble code search will not start (https://docs.astral.sh/uv/)"
-command -v codegraph >/dev/null && ok "codegraph" || warn "codegraph not found: the bundled CodeGraph MCP server will not start (section 3 installs it, or: npm install -g @colbymchenry/codegraph)"
+command -v codegraph >/dev/null && ok "codegraph" || warn "codegraph not found: the bundled CodeGraph MCP server will not start (section 3 installs it, or: npm install -g $CODEGRAPH_PKG)"
 command -v php    >/dev/null && ok "php"        || warn "php not found: per-edit PHP syntax check is skipped, not failed. Containerised toolchain? see .claude/lint-cmd in the README"
 command -v docker >/dev/null && ok "docker (containerised toolchains supported via .claude/lint-cmd)" || true
 command -v timeout >/dev/null || warn "no 'timeout' command (macOS: brew install coreutils); steps cannot be time-limited"
@@ -334,11 +335,11 @@ plan_block() {
   emit "                   plugin      dev-flow@dev-flow-marketplace$tag"
 
   if [ "$SKIP_CODEGRAPH" = "1" ] || ! command -v npm >/dev/null; then
-    emit "  codegraph        npm install -g @colbymchenry/codegraph  ${C_DIM}[skip]${C_OFF}"
+    emit "  codegraph        npm install -g $CODEGRAPH_PKG  ${C_DIM}[skip]${C_OFF}"
   elif command -v codegraph >/dev/null; then
-    emit "  codegraph        npm install -g @colbymchenry/codegraph  ${C_WARN}[have]${C_OFF}"
+    emit "  codegraph        npm install -g $CODEGRAPH_PKG  ${C_WARN}[have]${C_OFF}"
   else
-    emit "  codegraph        npm install -g @colbymchenry/codegraph"
+    emit "  codegraph        npm install -g $CODEGRAPH_PKG"
   fi
 
   emit "  verify           claude plugin list"
@@ -368,8 +369,8 @@ elif command -v npm >/dev/null; then
   if command -v codegraph >/dev/null; then
     have "codegraph already present"
   else
-    run_step 300 "npm install -g @colbymchenry/codegraph (can take a minute)" \
-      npm install -g @colbymchenry/codegraph
+    run_step 300 "npm install -g $CODEGRAPH_PKG (can take a minute)" \
+      npm install -g $CODEGRAPH_PKG
   fi
   if command -v codegraph >/dev/null; then
     note "per repo, once:  /dev-flow:onboard   (or manually: cd <repo> && codegraph init, add .codegraph/ to .gitignore)"

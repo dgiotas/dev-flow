@@ -13,21 +13,22 @@ restore() (
   f=.claude/.devflow-state.json
   [ -f "$f" ] || exit 0
 
-  jq -e '.schema_version == "1" and (.plan.file | type) == "string" and ((now - (.saved_at | fromdateiso8601)) < 86400)' "$f" >/dev/null || exit 0
+  jq -e '.schema_version == "2" and (.plan.file | type) == "string" and (.plan.file | test("^\\.claude/plans/[A-Za-z0-9._-]+\\.md$")) and ((now - (.saved_at | fromdateiso8601)) | . >= 0 and . < 86400)' "$f" >/dev/null || exit 0
 
   ctx=$(jq -r '
-    [ "dev-flow state saved before the last context compaction at \(.saved_at); .claude/plans is the source of truth.",
-      "Active plan: \(.plan.file) (slug \(.plan.slug)); "
-        + (if .plan.total == null then "checklist progress not countable."
-           else "\(.plan.done) of \(.plan.total) checklist items checked." end),
+    def c: tostring | .[0:200];
+    [ "dev-flow state saved before the last context compaction at \(.saved_at | c); .claude/plans is the source of truth.",
+      "Active plan: \(.plan.file | c) (slug \(.plan.slug | c)); "
+        + (if .plan.total == null then "task progress not countable."
+           else "\(.plan.done | c) of \(.plan.total | c) tasks done, \(.plan.in_progress | c) in progress." end),
       (if .git == null then empty else
-        "Git: branch \(.git.branch // "detached") at \(.git.head // "no commits"); \(.git.staged) staged, \(.git.unstaged) unstaged, \(.git.untracked) untracked files." end),
+        "Git: branch \((.git.branch // "detached") | c) at \((.git.head // "no commits") | c); \(.git.staged | c) staged, \(.git.unstaged | c) unstaged, \(.git.untracked | c) untracked files." end),
       (if .stop_gate.state == null and .stop_gate.giveup_logged_at == null then empty else
         "Stop gate: "
-        + ([ (if .stop_gate.state == null then empty else "\(.stop_gate.state) failed attempt(s) recorded" end),
-             (if .stop_gate.giveup_logged_at == null then empty else "give-up log last written at \(.stop_gate.giveup_logged_at)" end) ] | join("; "))
+        + ([ (if .stop_gate.state == null then empty else "\(.stop_gate.state | c) failed attempt(s) recorded" end),
+             (if .stop_gate.giveup_logged_at == null then empty else "give-up log last written at \(.stop_gate.giveup_logged_at | c)" end) ] | join("; "))
         + "." end),
-      (if (.blocked | length) == 0 then empty else "Blocked lines in the plan:", (.blocked[0:10][] | "- \(.)") end)
+      (if (.blocked | length) == 0 then empty else "Blocked lines in the plan:", (.blocked[0:10][] | "- \(. | c)") end)
     ] | join("\n")' "$f") || exit 0
   [ -n "$ctx" ] || exit 0
 

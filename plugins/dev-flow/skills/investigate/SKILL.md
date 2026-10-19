@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: Answer questions about how a codebase works, with citations to exact files and lines, without changing any code. Use when the user asks "how does X work", "why does this happen", "trace the flow of", "explain this service", "what is the request path for", or wants to understand a bug, an architecture, or a service interaction before deciding what to do. Use even when the user does not say "investigate". Read-only.
+description: Explain how a codebase works with path and line citations, changing no code. Use when the user asks "how does X work", "why does this happen", "trace the flow of", "explain this service" or "what is the request path for", or wants to understand a bug or architecture before deciding what to do. Read-only.
 ---
 
 # Investigate (read-only, cited)

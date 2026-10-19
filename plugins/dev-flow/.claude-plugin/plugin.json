@@ -1,6 +1,6 @@
 {
   "name": "dev-flow",
-  "version": "1.24.0",
+  "version": "1.26.0",
   "description": "Spec-then-build workflow with model routing (Opus plans; the plan names the model and effort for its review, each task and the final review, else the session's), bundled MCP servers, a retrying quality-gate stop hook, a pre-write guard that gates every change (write or edit) to AGENTS.md/CLAUDE.md/rules, container-friendly per-edit checks, nine dev skills, a plan reviewer, an offline Opus threat-modelling agent, and commands to derive and verify the per-repo hook commands.",
   "author": {
     "name": "Dimitris Giotas",

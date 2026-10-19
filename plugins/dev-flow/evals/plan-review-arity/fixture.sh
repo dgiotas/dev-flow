@@ -68,7 +68,7 @@ Spec: .claude/specs/badge.md
 
 ### Task 1: Omit an empty title in displayName
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Make displayName join only its non-empty parts.
 
@@ -89,7 +89,7 @@ Risk: low
 
 ### Task 2: Add greeting
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Add a function that wraps a name in the badge greeting.
 
@@ -110,7 +110,7 @@ Risk: low
 
 ### Task 3: Add badge
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Add badge(user), which greets the user's display name.
 

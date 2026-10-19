@@ -1,6 +1,6 @@
 ---
 name: verify-done
-description: Verify work is actually finished before claiming it is done. Run tests, lint, type checks, and for web features a browser check, then report evidence. Use at the end of any implementation, bug fix, refactor, or migration, and whenever you are about to say "done", "fixed", "implemented", or "ready". Also use when the user asks "is this ready", "does it work", or "can you verify".
+description: 'Verify work is finished before claiming it: run tests, lint and type checks, plus a browser check for web changes, and report the evidence. Use at the end of any implementation, fix, refactor or migration, before saying "done", "fixed", "implemented" or "ready", or when the user asks "is this ready", "does it work" or "can you verify".'
 ---
 
 # Verify before you say "done"
@@ -14,7 +14,7 @@ Never claim success without command output that proves it.
 3. **Static checks.** If `.claude/lint-cmd` exists, run `bash .claude/lint-cmd <repo-relative-path>` for each touched file. Lint, formatter check, and type or static analysis for touched files (`ruff`, `phpstan`, `tsc --noEmit`, `mvn -q compile`, and so on).
 4. **Behaviour check** for the thing that was actually asked for:
    - API change: call the endpoint (curl or an HTTP test) with a success case and a failure case. Show status and body.
-   - UI change: with the `chrome-devtools` MCP, load the page, exercise the flow, check the console and network for errors, and take a snapshot.
+   - UI change: if the `chrome-devtools` MCP is connected (an opt-in server), load the page, exercise the flow, check the console and network for errors, and take a snapshot; otherwise ask the user to check it in a browser and say it is unverified.
    - Migration or data change: run it on a copy or dev database and show the before/after.
    - Auth or session change: test valid, expired, and missing credentials.
 5. **Docs and contracts.** If you changed an API shape, config key, or env var, update its documentation and callers.

@@ -10,7 +10,7 @@ Run `git rev-parse --show-toplevel` and do all work there. If that fails (not a 
 
 ## 1. Check the binary exists
 
-Run `command -v codegraph`. If it is missing, report that CodeGraph is optional (it is optional everywhere else in this plugin) and the MCP server is registered regardless — it just has nothing to answer with yet — then tell the user to run `npm install -g @colbymchenry/codegraph` (or `bash install.sh`, section 3) and **stop cleanly**. This is not an error.
+Run `command -v codegraph`. If it is missing, report that CodeGraph is optional (it is optional everywhere else in this plugin) and the MCP server is registered regardless — it just has nothing to answer with yet — then tell the user to run `npm install -g @colbymchenry/codegraph@1.6.2` (or `bash install.sh`, section 3) and **stop cleanly**. This is not an error.
 
 ## 2. Check whether an index already exists
 

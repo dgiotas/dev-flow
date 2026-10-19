@@ -36,7 +36,7 @@ s5=$(grep '^5\. ' "$cmd")
 has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
 
 if has "$s3" 'plan-check.sh" .claude/plans'; then pass spec-step3-plancheck; else bad spec-step3-plancheck; fi
-if [[ "$s4" == '4. **Plan review.**'* ]] && has "$s4" '`plan-reviewer`' && has "$s4" 'never from inside' && has "$s4" 'at most 2 revisions'; then
+if [[ "$s4" == '4. **Plan review.**'* ]] && has "$s4" '`plan-reviewer`' && has "$s4" 'never from inside' && has "$s4" 'at most 1 revision'; then
   pass spec-step4-review
 else
   bad spec-step4-review
