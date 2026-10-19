@@ -23,7 +23,7 @@ Spec: .claude/specs/gate.md
 
 ### Task 1: Touch the app
 
-- [ ] Done
+Task status: NOT_STARTED
 
 Objective: Change the app.
 
@@ -80,7 +80,9 @@ run no-project-dir 2 'cannot enter CLAUDE_PROJECT_DIR' Agent "$imp" 'Plan: .clau
 msg=$(jq -n --arg p 'Plan: .claude/plans/bad.md' \
   '{tool_name:"Agent", tool_input:{subagent_type:"dev-flow:implementer", prompt:$p}}' \
   | CLAUDE_PROJECT_DIR="$P" bash "$gate" 2>&1)
-if printf '%s\n' "$msg" | grep -qF 'stop and report' && ! printf '%s\n' "$msg" | grep -qF 'tick its checkbox'; then
+if printf '%s\n' "$msg" | grep -qF 'stop and report' \
+  && printf '%s\n' "$msg" | grep -qF 'Do NOT set a Task status to DONE' \
+  && ! printf '%s\n' "$msg" | grep -qw 'tick'; then
   echo "PASS: failing-plan message"
 else
   echo "FAIL: failing-plan message"; printf '%s\n' "$msg" | sed 's/^/    /'; fail=1

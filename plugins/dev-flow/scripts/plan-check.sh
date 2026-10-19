@@ -5,7 +5,7 @@
 #
 # Usage:  bash plan-check.sh [--json] [--strict] <repo>/.claude/plans/<slug>.md
 # Prints key=value lines: plan, status, approved, one error=/warning= line per finding
-# (<sev>=<code> task=<N|-> line=<L>: <message>), open=<N>: <title> for each unticked task,
+# (<sev>=<code> task=<N|-> line=<L>: <message>), open=<N>: <title> for each task whose Task status is not DONE,
 # blocked=<N> line=<L>: <reason> for each unresolved BLOCKED deviation, errors, warnings, overrides,
 # result=ok|fail; the last line is always summary=.
 # Exit 0 when there are no errors, 1 when there are errors, 2 on a usage problem
@@ -35,7 +35,8 @@ if [ "$tpl" = 1 ]; then
   sed -e "s#@VERBS@#$verbs#" -e "s#@RISK@#$PLAN_RISK#" \
       -e "s#@STATUS@#${PLAN_STATUS%%|*}#" -e "s#@APPROVED@#${PLAN_APPROVED##*|}#" \
       -e "s#@MODEL@#$PLAN_MODEL#g" -e "s#@EFFORT@#$PLAN_EFFORT#g" \
-      -e "s#@RVMODEL@#$PLAN_REVIEWER_MODEL#g" -e "s#@RVEFFORT@#$PLAN_REVIEWER_EFFORT#g" <<'TPL'
+      -e "s#@RVMODEL@#$PLAN_REVIEWER_MODEL#g" -e "s#@RVEFFORT@#$PLAN_REVIEWER_EFFORT#g" \
+      -e "s#@TASKSTATUS@#${PLAN_TASK_STATUS%%|*}#g" <<'TPL'
 # Plan: <title>
 
 Status: @STATUS@
@@ -48,7 +49,7 @@ Review: <@MODEL@> <@EFFORT@>
 
 ### Task 1: <title>
 
-- [ ] Done
+Task status: @TASKSTATUS@
 
 Objective: <one sentence: what this task achieves>
 
@@ -73,7 +74,7 @@ Effort: <@EFFORT@>
 
 ### Task 2: <title>
 
-- [ ] Done
+Task status: @TASKSTATUS@
 
 Objective: <one sentence>
 
@@ -333,9 +334,9 @@ function exists(p) { return (p in ADDED) || ((p in EX) && !(p in REMOVED)) }
 function walk(   k, v, p, np, i, line, chk) {
   for (k = 1; k <= NE; k++) {
     v = E_VERB[k]; p = E_PATH[k]; np = E_NEW[k]; i = E_TASK[k]; line = E_LINE[k]
-    chk = !(T_DONE[i] + 0)
+    chk = (T_STATE[i] == "" || T_STATE[i] == TS_NEW)
     if (v == "create") {
-      if (chk && exists(p)) add(line, "error", "path-exists", i, p " already exists; /dev-flow:build ticks a task only after its verify passes, so a half-done task needs the user, not a tick")
+      if (chk && exists(p)) add(line, "error", "path-exists", i, p " already exists while the task is " TS_NEW "; a task that already ran is " TS_RAN ", so this needs the user, not a Task status edit")
       ADDED[p] = 1; delete REMOVED[p]
     } else if (v == "modify") {
       if (chk && !exists(p)) add(line, "error", "path-missing", i, p " does not exist at this point in the plan")
@@ -344,7 +345,7 @@ function walk(   k, v, p, np, i, line, chk) {
       delete ADDED[p]; REMOVED[p] = 1
     } else if (v == "rename") {
       if (chk && !exists(p)) add(line, "error", "path-missing", i, p " does not exist at this point in the plan")
-      if (chk && exists(np)) add(line, "error", "path-exists", i, np " already exists; /dev-flow:build ticks a task only after its verify passes, so a half-done task needs the user, not a tick")
+      if (chk && exists(np)) add(line, "error", "path-exists", i, np " already exists while the task is " TS_NEW "; a task that already ran is " TS_RAN ", so this needs the user, not a Task status edit")
       delete ADDED[p]; REMOVED[p] = 1; ADDED[np] = 1; delete REMOVED[np]
     } else {
       ADDED[p] = 1; delete REMOVED[p]
@@ -406,6 +407,9 @@ BEGIN {
   for (k = 1; k <= nb; k++) BASEW[bw[k]] = 1
   nb = split(ENVIRON["PLAN_TOOLWORDS"], bw, " ")
   for (k = 1; k <= nb; k++) TOOLW[bw[k]] = 1
+  nts = split(ENVIRON["PLAN_TASK_STATUS"], TSV, "|"); TS_NEW = TSV[1]; TS_DONE = TSV[nts]
+  TS_RAN = TSV[2]
+  for (k = 3; k <= nts; k++) TS_RAN = TS_RAN (k == nts ? " or " : ", ") TSV[k]
   sec = "header"; infence = 0
 }
 {
@@ -423,7 +427,12 @@ BEGIN {
   if (head3 == "\140\140\140" || head3 == "\176\176\176") {
     infence = 1; fchar = substr(head3, 1, 1); flen = 0; fence_line = NR
     while (substr($0, flen + 1, 1) == fchar) flen++
-    fence_task = (sec == "tasks" && cur > 0 ? cur : "-"); next
+    fence_task = (sec == "tasks" && cur > 0 ? cur : "-")
+    if (sec == "tasks" && expect_box) {
+      expect_box = 0
+      add(NR, "error", "task-status", cur, "first line after the heading must be 'Task status: <" ENVIRON["PLAN_TASK_STATUS"] ">', not a code fence")
+    }
+    next
   }
   if (substr($0, 1, 3) == "## ") {
     if (sec == "tasks") { finish_task(); cur = 0; expect_box = 0 }
@@ -461,13 +470,20 @@ BEGIN {
     else add(NR, "error", "deviation-line", "-", "Deviations line must be '- Task N: <text>'")
   }
   if (sec == "tasks" && expect_box && $0 !~ /^[ \t]*$/) {
-    if ($0 ~ /^- \[[ xX]\]( |$)/) {
-      T_DONE[cur] = (substr($0, 4, 1) == " " ? 0 : 1)
-      expect_box = 0
-      next
-    }
-    add(T_LINE[cur], "error", "checkbox", cur, "first line after the heading must be '- [ ] Done' or '- [x] Done'")
     expect_box = 0
+    if (index($0, "Task status:") == 1) {
+      ts = trim(substr($0, 13)); gsub(/\t/, " ", ts)
+      if (inlist(ts, ENVIRON["PLAN_TASK_STATUS"])) T_STATE[cur] = ts
+      else add(NR, "error", "task-status", cur, "Task status: " ts " is not one of " ENVIRON["PLAN_TASK_STATUS"])
+      next
+    } else if ($0 ~ /^- \[[ xX]\]( |$)/) {
+      add(NR, "error", "task-status", cur, "the '- [ ] Done' checkbox was replaced by a Task status line in 1.26.0: write 'Task status: " TS_NEW "' for '- [ ] Done' and 'Task status: " TS_DONE "' for '- [x] Done'")
+      next
+    } else add(T_LINE[cur], "error", "task-status", cur, "first line after the heading must be 'Task status: <" ENVIRON["PLAN_TASK_STATUS"] ">'")
+  }
+  if (sec == "tasks" && cur > 0 && index($0, "Task status:") == 1) {
+    add(NR, "error", "field-duplicate", cur, "a Task status: line may only be the first line of a task")
+    next
   }
   if (sec == "tasks" && cur > 0) {
     if ($0 ~ LABEL_RE) {
@@ -555,7 +571,7 @@ END {
   if (json == 1) {
     print "H\tstatus\t" sv
     print "H\tapproved\t" av
-    for (i = 1; i <= n; i++) if (!(T_DONE[i] + 0)) print "O\t" T_NUM[i] "\t" T_TITLE[i]
+    for (i = 1; i <= n; i++) if (T_STATE[i] != TS_DONE) print "O\t" T_NUM[i] "\t" T_TITLE[i]
     for (k = 1; k <= NB; k++) print "B\t" B_TASK[k] "\t" B_LINE[k] "\t" B_TEXT[k]
     for (p in FILESET) print "D\t" p
     for (p in DECL) print "D\t" p
@@ -575,7 +591,7 @@ END {
   print "plan=" plan
   print "status=" sv
   print "approved=" av
-  for (i = 1; i <= n; i++) if (!(T_DONE[i] + 0)) print "open=" T_NUM[i] ": " T_TITLE[i]
+  for (i = 1; i <= n; i++) if (T_STATE[i] != TS_DONE) print "open=" T_NUM[i] ": " T_TITLE[i]
   for (k = 1; k <= NB; k++) print "blocked=" B_TASK[k] " line=" B_LINE[k] ": " B_TEXT[k]
   for (i = 1; i <= nf; i++) {
     suffix = ""

@@ -32,7 +32,7 @@ Spec: .claude/specs/demo.md
 
 ### Task 1: Change it
 
-- [x] Done
+Task status: DONE
 
 Objective: Change the file.
 
@@ -107,6 +107,7 @@ base=$(g -C "$S" rev-parse HEAD)
 echo a2 >> "$S/src/a.sh"
 mkdir -p "$S/.claude/.approved-writes"
 echo x > "$S/.claude/.stop-gate-state"; echo x > "$S/.claude/stop-gate-giveup.log"
+echo x > "$S/.claude/.stop-gate-pass"; echo x > "$S/.claude/.stop-gate-plan"
 echo x > "$S/.claude/.devflow-state.json"; echo x > "$S/.claude/.approved-writes/m1"
 cd "$S" || exit 2
 expect state-files 0 result=ok "$S/.claude/plans/demo.md" "$base"

@@ -35,7 +35,7 @@ printf '%s' "$json" | jq -r '.declared[]' | sort -u > "$tmp/declared"
   git -C "$root" -c core.quotePath=false diff --relative --name-only --no-renames "$base" -- .
   git -C "$root" -c core.quotePath=false ls-files --others --exclude-standard -- .
 } | grep -v -e '^\.claude/plans/' -e '^\.claude/specs/' -e '^\.claude/worktrees/' \
-    -e '^\.claude/\.stop-gate-state$' -e '^\.claude/stop-gate-giveup\.log$' \
+    -e '^\.claude/\.stop-gate-state$' -e '^\.claude/\.stop-gate-pass$' -e '^\.claude/\.stop-gate-plan$' -e '^\.claude/stop-gate-giveup\.log$' \
     -e '^\.claude/\.devflow-state\.json$' -e '^\.claude/\.approved-writes/' | sort -u > "$tmp/changed"
 
 awk 'NR==FNR{d[$0]=1;next} !($0 in d)' "$tmp/declared" "$tmp/changed" > "$tmp/drift"

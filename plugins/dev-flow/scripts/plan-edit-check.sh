@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # plan-edit-check.sh: detect plan edits an implementer may not make.
-# An implementer may tick its own checkbox, add entries to its own Files
-# block, and append lines "- Task N: ..." to ## Deviations. Anything else in
-# the plan is a finding.
+# An implementer may move its own Task status forward (NOT_STARTED to
+# IN_PROGRESS to DONE), add entries to its own Files block, and append lines
+# "- Task N: ..." to ## Deviations. Anything else in the plan is a finding.
 # Usage: bash plan-edit-check.sh <before> <after> <N>
 # Output (key=value lines): one error=<code> line=<n>: <text> per finding
-#   (foreign-edit|checkbox-edit|files-removed|deviation-rewritten|
+#   (foreign-edit|status-edit|files-removed|deviation-rewritten|
 #   deviation-task), then errors=<n>, result=ok|fail and a final summary=
 #   line. Usage errors print error=<code> then summary=.
 # Exit: 0 no findings, 1 findings, 2 usage or input error
@@ -26,7 +26,7 @@ case $n in ''|*[!0-9]*|0*) die usage "N must be a positive integer: $n" ;; esac
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
-# Emits F (frame), C (checkbox), E (Files entry), V (Deviations line) and T
+# Emits F (frame), C (Task status line), E (Files entry), V (Deviations line) and T
 # (Task N found) records. Fenced lines never start or end a region.
 records() {
   awk -v want="$1" '
@@ -51,10 +51,10 @@ records() {
         if (intask && infiles && (line ~ label || line ~ /^#/)) infiles = 0
       }
       if (indev && line != "") { rec("V", line) }
-      else if (intask && infiles && line != "") { rec("E", line) }
-      else if (intask && !seen && line != "") {
+      else if (intask && infiles && substr(line, 1, 2) == "- ") { rec("E", line) }
+      else if (intask && !seen && line !~ /^[ \t]*$/) {
         seen = 1
-        if (line ~ /^- \[[ xX]\]/) rec("C", line); else rec("F", line)
+        if (index(line, "Task status:") == 1) rec("C", line); else rec("F", line)
       }
       else {
         if (intask && !fence && line ~ /^Files:/) infiles = 1
@@ -84,6 +84,7 @@ findings=$(awk -F'\t' -v n="$n" -v hasdev="$hasdev" '
   function text(s) { sub(/^[^\t]*\t[^\t]*\t/, "", s); return s }
   function cut(s) { return substr(s, 1, 120) }
   function emit(code, ln, t) { printf "error=%s line=%d: %s\n", code, ln, cut(t) }
+  function rank(s,   n, a, i) { sub(/^Task status:/, "", s); gsub(/^[ \t]+|[ \t]+$/, "", s); n = split(ENVIRON["PLAN_TASK_STATUS"], a, "|"); for (i = 1; i <= n; i++) if (a[i] == s) return i; return 0 }
   FNR == 1 { file++ }
   {
     kind = $1; ln = $2; t = text($0)
@@ -105,13 +106,10 @@ findings=$(awk -F'\t' -v n="$n" -v hasdev="$hasdev" '
         break
       }
     }
-    # Checkbox: unchanged, or an unticked box ticked.
+    # Task status: unchanged, or moved forward in schema order.
     bc = val[1, "C", 1]; ac = val[2, "C", 1]
-    if (cnt[2, "C"] != 1 || cnt[1, "C"] != 1) emit("checkbox-edit", cnt[2, "C"] > 0 ? num[2, "C", 1] : tline[2] + 0, ac)
-    else if (bc != ac) {
-      if (!(substr(bc, 1, 5) == "- [ ]" && (substr(ac, 1, 5) == "- [x]" || substr(ac, 1, 5) == "- [X]") && substr(bc, 6) == substr(ac, 6)))
-        emit("checkbox-edit", num[2, "C", 1], ac)
-    }
+    if (cnt[2, "C"] != 1 || cnt[1, "C"] != 1) emit("status-edit", cnt[2, "C"] > 0 ? num[2, "C", 1] : tline[2] + 0, ac)
+    else if (bc != ac && !(rank(bc) > 0 && rank(ac) > rank(bc))) emit("status-edit", num[2, "C", 1], ac)
     # Files: every before entry must survive.
     for (i = 1; i <= cnt[2, "E"]; i++) kept[val[2, "E", i]] = 1
     for (i = 1; i <= cnt[1, "E"]; i++)
@@ -128,7 +126,7 @@ findings=$(awk -F'\t' -v n="$n" -v hasdev="$hasdev" '
 if [ -z "$findings" ]; then
   echo "errors=0"
   echo "result=ok"
-  echo "summary=plan-edit-check: Task $n edits stay inside its checkbox, Files block and Deviations lines"
+  echo "summary=plan-edit-check: Task $n edits stay inside its Task status line, Files block and Deviations lines"
   exit 0
 fi
 printf '%s\n' "$findings"

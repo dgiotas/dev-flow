@@ -46,7 +46,7 @@ plan=$(printf '%s\n' "$prompt" | sed -n 's/^Plan:[[:space:]]*\(.*\.md\)[[:space:
 cd "${CLAUDE_PROJECT_DIR:-.}" || deny "cannot enter CLAUDE_PROJECT_DIR to resolve $plan."
 
 out=$(bash "$checker" "$plan" 2>&1); rc=$?
-[ "$rc" = 0 ] || deny "$plan does not pass plan-check (exit $rc). Do NOT tick a task that is not finished. If a task's verify failed or the plan changed mid-build, stop and report to the user instead of re-dispatching." "$(printf '%s\n' "$out" | tail -n 40)"
+[ "$rc" = 0 ] || deny "$plan does not pass plan-check (exit $rc). Do NOT set a Task status to DONE for a task that is not finished. If a task's verify failed or the plan changed mid-build, stop and report to the user instead of re-dispatching." "$(printf '%s\n' "$out" | tail -n 40)"
 
 printf '%s\n' "$out" | grep -qx 'approved=yes' || deny "$plan is not approved: /dev-flow:build sets Approved: yes after plan-check passes."
 b=$(printf '%s\n' "$out" | grep '^blocked=')

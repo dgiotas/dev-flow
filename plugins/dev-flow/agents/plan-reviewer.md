@@ -17,7 +17,7 @@ Never report these; the structural validator has already passed them:
 
 - header values
 - task headings and numbering
-- checkboxes
+- task status lines
 - required labels and empty labels
 - `Files:` verbs and entry format
 - whether a `Files:` path exists along the task order

@@ -2,7 +2,7 @@
 # PreCompact: saves a small state snapshot to .claude/.devflow-state.json so the
 # active plan survives context compaction (session-start-restore.sh reads it back).
 #
-# Captures only: plan file name/slug, checklist counts, git branch/short sha/counts,
+# Captures only: plan file name/slug, task counts by Task status, git branch/short sha/counts,
 # stop-gate counter and give-up log time, and redacted, truncated BLOCKED lines.
 # No file contents, prompts, payload text or absolute paths.
 #
@@ -19,9 +19,14 @@ snapshot() (
   [ -n "$plan" ] && [ -f "$plan" ] || exit 0
   slug=$(basename "$plan" .md)
 
-  total=$(grep -cE '^[[:space:]]*[-*] \[[ xX]\]' "$plan")
-  checked=$(grep -cE '^[[:space:]]*[-*] \[[xX]\]' "$plan")
-  if [ "$total" -eq 0 ]; then total=null; checked=null; fi
+  counts=$(awk '
+    /^Task status: (NOT_STARTED|IN_PROGRESS|DONE)$/ { t++ }
+    /^Task status: DONE$/ { d++ }
+    /^Task status: IN_PROGRESS$/ { p++ }
+    END { printf "%d %d %d", t, d, p }' "$plan")
+  set -- $counts
+  total=$1; finished=$2; started=$3
+  if [ "$total" -eq 0 ]; then total=null; finished=null; started=null; fi
 
   git=null
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -51,10 +56,10 @@ snapshot() (
 
   mkdir -p .claude
   jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg file "$plan" --arg slug "$slug" \
-    --argjson checked "$checked" --argjson total "$total" --argjson git "$git" \
+    --argjson finished "$finished" --argjson started "$started" --argjson total "$total" --argjson git "$git" \
     --argjson state "$state" --arg giveup "$giveup" --argjson blocked "$blocked" \
-    '{schema_version: "1", saved_at: $at,
-      plan: {file: $file, slug: $slug, done: $checked, total: $total},
+    '{schema_version: "2", saved_at: $at,
+      plan: {file: $file, slug: $slug, done: $finished, in_progress: $started, total: $total},
       git: $git,
       stop_gate: {state: $state, giveup_logged_at: (if $giveup == "" then null else $giveup end)},
       blocked: $blocked}' > .claude/.devflow-state.json.tmp \

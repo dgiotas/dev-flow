@@ -13,14 +13,14 @@ restore() (
   f=.claude/.devflow-state.json
   [ -f "$f" ] || exit 0
 
-  jq -e '.schema_version == "1" and (.plan.file | type) == "string" and (.plan.file | test("^\\.claude/plans/[A-Za-z0-9._-]+\\.md$")) and ((now - (.saved_at | fromdateiso8601)) | . >= 0 and . < 86400)' "$f" >/dev/null || exit 0
+  jq -e '.schema_version == "2" and (.plan.file | type) == "string" and (.plan.file | test("^\\.claude/plans/[A-Za-z0-9._-]+\\.md$")) and ((now - (.saved_at | fromdateiso8601)) | . >= 0 and . < 86400)' "$f" >/dev/null || exit 0
 
   ctx=$(jq -r '
     def c: tostring | .[0:200];
     [ "dev-flow state saved before the last context compaction at \(.saved_at | c); .claude/plans is the source of truth.",
       "Active plan: \(.plan.file | c) (slug \(.plan.slug | c)); "
-        + (if .plan.total == null then "checklist progress not countable."
-           else "\(.plan.done | c) of \(.plan.total | c) checklist items checked." end),
+        + (if .plan.total == null then "task progress not countable."
+           else "\(.plan.done | c) of \(.plan.total | c) tasks done, \(.plan.in_progress | c) in progress." end),
       (if .git == null then empty else
         "Git: branch \((.git.branch // "detached") | c) at \((.git.head // "no commits") | c); \(.git.staged | c) staged, \(.git.unstaged | c) unstaged, \(.git.untracked | c) untracked files." end),
       (if .stop_gate.state == null and .stop_gate.giveup_logged_at == null then empty else
