@@ -83,7 +83,7 @@ if [ "$tool" = "Bash" ]; then
 
   # Per-construct: the guarded name must be the actual TARGET of that
   # construct, not merely co-occurring somewhere in the command.
-  redirect_re="(^|[[:space:]])>{1,2}\\|?[[:space:]]*[\"']?${gtarget}"          # >, >>, >| (also catches heredocs: the > before <<EOF)
+  redirect_re="(^|[[:space:]]|[0-9])>{1,2}\\|?[[:space:]]*[\"']?${gtarget}"          # >, >>, >| (also catches heredocs: the > before <<EOF)
   tee_re="(^|[[:space:]])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[\"']?${gtarget}"
   dd_re="(^|[[:space:]])dd([[:space:]][^[:space:]]*)*[[:space:]]of=${gtarget}"
   truncate_re="(^|[[:space:]])truncate[[:space:]].*${gtarget}"
@@ -103,7 +103,7 @@ if [ "$tool" = "Bash" ]; then
      || printf '%s\n' "$clauses" | grep -qE "$rm_re" \
      || printf '%s\n' "$clauses" | grep -qE "$gitrestore_re" \
      || printf '%s\n' "$clauses" | grep -qE "$gitcheckout_re" \
-     || printf '%s' "$cmd" | grep -qE 'python[0-9.]*[[:space:]]+-c'; then
+     || printf '%s' "$cmd" | grep -qE '(python[0-9.]*[[:space:]]+-c|(node|ruby|perl)[[:space:]]+-[a-zA-Z]*e)([[:space:]]|$)'; then
     blocked=1
   fi
   [ "$blocked" = 1 ] || exit 0

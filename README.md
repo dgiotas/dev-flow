@@ -81,7 +81,7 @@ Re-running is safe. Every step is time-limited and shows its own output on failu
 
 1. Checks prerequisites (`claude`, `jq`, `git`, optionally `node`, `uv`, `codegraph`, `php`, `docker`, `timeout`).
 2. Adds the dev-flow marketplace, then installs the plugin.
-3. Installs the CodeGraph MCP server binary (`npm install -g @colbymchenry/codegraph`), unless skipped.
+3. Installs the CodeGraph MCP server binary (`npm install -g @colbymchenry/codegraph@1.6.2`), unless skipped.
 4. Verifies with `claude plugin list` and prints next steps.
 
 </details>
@@ -594,10 +594,10 @@ All four are registered the moment the plugin is installed — none of them need
 
 | Server | Extra setup? |
 |---|---|
-| `context7` | None. `npx -y @upstash/context7-mcp` fetches and runs the package itself on first use (needs Node). |
-| `chrome-devtools` | None. `npx chrome-devtools-mcp@latest` fetches and runs itself on first use (needs Node). |
-| `semble` | None. `uvx --from semble[mcp] semble` fetches and runs itself on first use (needs `uv`/`uvx`). |
-| `codegraph` | Yes. Its `.mcp.json` command (`codegraph serve --mcp`) calls the `codegraph` binary directly rather than through a fetcher like `npx`/`uvx`, so it must already be on PATH or the server won't connect. `install.sh` installs it for you (section 3, `npm install -g @colbymchenry/codegraph`, skipped with `--skip-codegraph`); otherwise run that command yourself. Per repo, also run `codegraph init` once — the server connects either way, but has nothing to query until you do. |
+| `context7` | None. `npx -y @upstash/context7-mcp@4.4.2` fetches and runs the package itself on first use (needs Node). |
+| `chrome-devtools` | None. `npx chrome-devtools-mcp@1.11.0` fetches and runs itself on first use (needs Node). |
+| `semble` | None. `uvx --from semble[mcp]==0.7.0 semble` fetches and runs itself on first use (needs `uv`/`uvx`). |
+| `codegraph` | Yes. Its `.mcp.json` command (`codegraph serve --mcp`) calls the `codegraph` binary directly rather than through a fetcher like `npx`/`uvx`, so it must already be on PATH or the server won't connect. `install.sh` installs it for you (section 3, `npm install -g @colbymchenry/codegraph@1.6.2`, skipped with `--skip-codegraph`); otherwise run that command yourself. Per repo, also run `codegraph init` once — the server connects either way, but has nothing to query until you do. |
 
 Verify any of them with `claude mcp list`: expect `plugin:dev-flow:<name>: ... - ✔ Connected`. `✘ Failed to connect` on `codegraph` means the binary isn't on PATH; on the other three it usually means Node or `uv` is missing (see Getting Started > Prerequisites above).
 
@@ -871,12 +871,16 @@ From v1.10.0 the block message's second line names the version that fired, so a 
 - Implementer plan-writing (ticks, Files and Deviations lines, BLOCKED entries), resume at the first `open=` task, scope-drift review and the stop-gate plan check are covered by offline tests of the scripts but are not verified inside a live Claude Code session.
 - plan-reviewer findings are model judgement and advisory (`/dev-flow:build` does not gate on them); the review loop and its 2-revision cap are command instructions; the loop inside `/dev-flow:spec` has not been run live; the agent is checked only by the two synthetic eval cases and by the offline test of its frontmatter and wiring.
 - Install, component registration (`claude plugin details`) and the uninstall sequence below are now verified by actually running them. What is still **not** verified is the workflow itself in a live session: `/dev-flow:spec` → `/dev-flow:build`, the hooks firing inside a real turn (the implementer gate has one user-reported live denial, see Known limits and the Implementer gate section; the other hooks have none), and whether a command's `model:` frontmatter pins the model as documented. Trial it on a small task before rolling out.
+- The approval marker for the pre-write guard is created by the model with `Bash`, and nothing stops it writing one without asking; the user's yes is an instruction to the model, not a mechanical check.
+- `.claude/test-cmd` and `.claude/lint-cmd` run as shell commands from the repo, without a permission prompt, at turn end and after each edit. Only use dev-flow in repos you trust, and review changes to those two files like code.
+- `.claude/security-targets.json` is not covered by the pre-write guard, so a PR can widen the allowlist. The production check is a heuristic on `env` and exact host labels (`prod`, `production`, `live`), not a classifier: `api-prod.example.com` passes it. Put the file under CODEOWNERS and keep the allowlist itself authoritative.
+- `install.sh` fetched with `curl | bash` from `main` trusts whoever can push to `main`; there is no checksum. Prefer `DEV_FLOW_VERSION=x.y.z`, and enable branch and tag protection on the repo, since tags are mutable otherwise.
 - CodeGraph and Semble build indexes on first use and can be slow on large repos.
 - The stop gate does nothing without a per-repo `.claude/test-cmd`; the retry/give-up mechanism and its interaction with Claude Code's stop-hook block cap are tested standalone (not yet inside a live Claude Code stop-hook cycle).
 - With a containerised toolchain and no `.claude/lint-cmd`, per-edit checks skip silently — which means the stop gate (`.claude/test-cmd`) is your only automated check, so it is worth setting up properly there.
 - Whether Claude Code loads `AGENTS.md` natively is version-dependent and unverified here; that is why `setup-rules` adds a `CLAUDE.md` symlink or import pointer rather than assuming.
 - The `ALLOW-CLAUDE-MD-EDIT` override is a guardrail, not a security boundary: the hook cannot tell who created the file, it only checks that it exists. The skill is instructed not to create it.
-- `Write`/`Edit` are gated mechanically; the `Bash` bypass is now closed for the common shapes (heredoc, `>`/`>>`, `tee`, `sed -i`/`perl -i`, `cp`, `mv`, `install`, `rm`/`unlink`/`shred`, `dd`, `truncate`, `git restore`/`git checkout -- `, `python -c`). This is command-text matching, a guardrail, not a boundary — obfuscated command text (a variable, a script file, base64), `node -e`/`ruby -e` one-liners that write files, and a directory-target `cp`/`mv` (e.g. `cp x.md .claude/rules/` without naming the destination file, so the guard never sees a `.md` filename to match) all still get through. The guard overall remains a guardrail against model error, not a security boundary.
+- `Write`/`Edit` are gated mechanically; the `Bash` bypass is now closed for the common shapes (heredoc, `>`/`>>`, `tee`, `sed -i`/`perl -i`, `cp`, `mv`, `install`, `rm`/`unlink`/`shred`, `dd`, `truncate`, `git restore`/`git checkout -- `, fd redirects such as `3>`, and `python -c`/`node -e`/`ruby -e`/`perl -e` one-liners). This is command-text matching, a guardrail, not a boundary — obfuscated command text (a variable, a script file, base64), a `cd` into the rules directory followed by a bare filename, and a directory-target `cp`/`mv` (e.g. `cp x.md .claude/rules/` without naming the destination file, so the guard never sees a `.md` filename to match) all still get through. The guard overall remains a guardrail against model error, not a security boundary.
 - The compaction snapshot is verified by running its scripts directly, not yet inside a live compaction; see [Compaction snapshot](#compaction-snapshot) for what it does not capture.
 - Rule templates are starting points: `init-rules` verifies them against the repo, but review the result.
 - No persistent memory and no usage dashboard.
