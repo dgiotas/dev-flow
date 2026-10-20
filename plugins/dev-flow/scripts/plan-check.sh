@@ -194,6 +194,25 @@ function inlist(v, list,   n, a, i) {
   for (i = 1; i <= n; i++) if (a[i] == v) return 1
   return 0
 }
+# A title may start with one "[<tag>] " from PLAN_TAGS, never before "Manual:"; once a qa task is seen, later tasks must carry a PLAN_TAG_POST_QA tag or a "Manual:" title.
+function check_tag(i, ln, t,   j, tag) {
+  if (substr(t, 1, 1) != "[") tag = ""
+  else {
+    j = index(t, "]")
+    tag = (j > 2 ? substr(t, 2, j - 2) : "")
+    if (tag == "" || !inlist(tag, ENVIRON["PLAN_TAGS"]) || substr(t, j + 1, 1) != " " || trim(substr(t, j + 1)) == "") {
+      add(ln, "error", "task-tag", i, "title tag must be one of [" ENVIRON["PLAN_TAGS"] "] followed by a space and the title")
+      return
+    }
+    if (index(trim(substr(t, j + 1)), "Manual:") == 1) {
+      add(ln, "error", "task-tag", i, "a Manual: task must not carry a tag; build treats only titles that start with Manual: as manual")
+      return
+    }
+  }
+  if (tag == ENVIRON["PLAN_TAG_QA"]) seen_qa = 1
+  else if (seen_qa && !inlist(tag, ENVIRON["PLAN_TAG_POST_QA"]) && index(t, "Manual:") != 1)
+    add(ln, "error", "task-tag", i, "a [" ENVIRON["PLAN_TAG_QA"] "] task must come after every untagged, [backend], [frontend] and [devops] task")
+}
 function add(line, sev, code, task, msg) {
   gsub(/\t/, " ", msg)
   nf++
@@ -450,6 +469,7 @@ BEGIN {
       num = $0; sub(/^### Task /, "", num); num = num + 0
       T_LINE[n] = NR; T_NUM[n] = num
       title = $0; sub(/^### Task [0-9]+: /, "", title); gsub(/\t/, " ", title); T_TITLE[n] = title
+      check_tag(n, NR, title)
       if (num != n) add(NR, "error", "task-number", n, "expected Task " n ", found Task " num)
       placeholder(n)
     } else {

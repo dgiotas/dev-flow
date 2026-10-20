@@ -16,7 +16,7 @@ Explore with the cheapest tool that answers the question. Reading whole files is
 | "Who calls X?" / "What does X call?" / "What breaks if I change X?" | `codegraph` MCP (`codegraph_explore`) | LSP find-references, then `rg` |
 | Definition, type, diagnostics of a symbol | LSP tool if available | `rg` + read the file |
 | How a third-party library or framework API works | `context7` MCP | official docs via web fetch |
-| Behaviour visible only at runtime (UI, network, console) | `chrome-devtools` MCP (opt-in) | ask the user to run it |
+| Behaviour visible only at runtime (UI, network, console) | `chrome-devtools` MCP (bundled) | ask the user to run it |
 
 ## Procedure
 

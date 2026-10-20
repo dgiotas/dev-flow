@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# TEMPLATE -> copy to .claude/test-cmd in a frontend repo and adapt.
+#
+# The stop-gate hook runs this before Claude is allowed to finish a turn that
+# changed files. Non-zero blocks finishing and the output goes back to Claude.
+# Keep it FAST. Hooks have no TTY, so plain `npx` would download a missing tool unpinned; `--no-install` makes a missing tool fail (nonzero exit) instead. Swap `npx --no-install` for `pnpm exec` or `yarn` to match the lockfile.
+set -u
+
+npx --no-install tsc --noEmit || exit 1
+npx --no-install eslint . --max-warnings=0 || exit 1
+npx --no-install vitest run || exit 1
+
+exit 0

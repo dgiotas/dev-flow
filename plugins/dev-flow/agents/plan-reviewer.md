@@ -18,6 +18,7 @@ Never report these; the structural validator has already passed them:
 - header values
 - task headings and numbering
 - task status lines
+- task title tags and the order of [qa] tasks
 - required labels and empty labels
 - `Files:` verbs and entry format
 - whether a `Files:` path exists along the task order
@@ -41,7 +42,7 @@ Never report these; the structural validator has already passed them:
    - **Test first**: the test as written fails before the task's change, for the reason the task targets; it does not pass trivially against the existing code and does not fail for an unrelated reason.
    - **Ordering**: task order and `Depends on` match real code dependencies: no task uses a symbol or behaviour that a later or undeclared task provides.
    - **Symbols**: every referenced symbol and path exists with the name, arity, parameter order, return shape and export the task assumes; cite the definition's `path:line` and quote the real signature.
-   - **Scope**: no task changes behaviour, interfaces or files beyond what the spec asks, or touches a stated non-goal.
+   - **Scope**: no task changes behaviour, interfaces or files beyond what the spec asks, or touches a stated non-goal. Each task's title tag fits its Files: UI files [frontend], server code [backend], end-to-end tests [qa], CI and infrastructure [devops], documentation only [docs], anything mixed untagged.
    - **Risk**: a task touching payments or money, authentication or authorisation, sessions, secrets, migrations or data deletion has an explicit rollback step or a test of its failure path.
 4. On a re-review, a previous finding is resolved when the plan now handles it, or when its `Disputed` line is backed by the code.
 

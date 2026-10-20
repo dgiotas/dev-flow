@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# TEMPLATE -> copy to .claude/lint-cmd in a frontend repo and adapt.
+#
+# Runs on one changed file. Type checks stay in test-cmd, because `tsc` on one
+# file ignores tsconfig.json. Hooks have no TTY, so plain `npx` would download a missing tool unpinned; `--no-install` makes a missing tool fail (nonzero exit) instead. Swap `npx --no-install` for `pnpm exec` or `yarn` to match the lockfile.
+set -u
+f="$1"
+
+case "$f" in
+  *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.vue|*.svelte) npx --no-install eslint --max-warnings=0 -- "$f" ;;
+  *) exit 0 ;;
+esac
