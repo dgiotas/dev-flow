@@ -340,6 +340,18 @@ out=$(bash "$script" "$(mk resolved-line '{print} END{print ""; print "## Deviat
 if printf '%s\n' "$out" | grep -q '^blocked='; then echo "FAIL: resolved-line"; fail=1; else echo "PASS: resolved-line"; fi
 jexpect json-progress 0 '.open == [{"task":1,"title":"Add the greeter"},{"task":2,"title":"Call the greeter"}] and .blocked[0].task == 2 and .blocked[0].text == "needs a schema decision" and (.declared | any(. == "src/app.sh")) and (.declared | any(. == "src/extra.sh")) and (.declared | any(. == "src/greet.sh"))' "$(mk json-progress "$DEVB; print \"- Task 1: also touched \" sprintf(\"%c\", 96) \"src/extra.sh\" sprintf(\"%c\", 96)}")"
 
+# task tags
+golden tag-ok "$(mk tag-ok '{sub(/^### Task 1: /,"### Task 1: [backend] "); sub(/^### Task 2: /,"### Task 2: [qa] ")}1')"
+also tag-open 'open=1: [backend] Add the greeter'
+golden tag-docs-after-qa "$(mk tag-docs-after-qa '{sub(/^### Task 1: /,"### Task 1: [qa] "); sub(/^### Task 2: /,"### Task 2: [docs] ")}1')"
+golden tag-manual-after-qa "$(mk tag-manual-after-qa '{sub(/^### Task 1: /,"### Task 1: [qa] "); sub(/^### Task 2: /,"### Task 2: Manual: ")}1')"
+expect tag-unknown 1 'error=task-tag task=1 line=9:' "$(mk tag-unknown '{sub(/^### Task 1: /,"### Task 1: [api] ")}1')"
+expect tag-no-space 1 'error=task-tag task=1 line=9:' "$(mk tag-no-space '{sub(/^### Task 1: /,"### Task 1: [backend]")}1')"
+expect tag-manual-tagged 1 'error=task-tag task=1 line=9:' "$(mk tag-manual-tagged '{sub(/^### Task 1: /,"### Task 1: [docs] Manual: ")}1')"
+expect tag-empty 1 'error=task-tag task=1 line=9:' "$(mk tag-empty '{sub(/^### Task 1: Add the greeter$/,"### Task 1: [backend]")}1')"
+expect tag-after-qa 1 'error=task-tag task=2 line=28:' "$(mk tag-after-qa '{sub(/^### Task 1: /,"### Task 1: [qa] ")}1')"
+expect tag-backend-after-qa 1 'error=task-tag task=2 line=28:' "$(mk tag-backend-after-qa '{sub(/^### Task 1: /,"### Task 1: [qa] "); sub(/^### Task 2: /,"### Task 2: [backend] ")}1')"
+
 # jq missing: a PATH with the tools the script needs but no jq
 nojq=$tmp/nojq; mkdir -p "$nojq"
 for t in bash awk sed sort mktemp tr grep cat rm dirname basename head tail; do ln -s "$(command -v $t)" "$nojq/$t"; done
@@ -386,7 +398,7 @@ for name in rules agent; do
   if [ "$name" = rules ]; then target="$here/.claude/rules/plans.md"; else target="$here/plugins/dev-flow/agents/spec-architect.md"; fi
   drift=1
   if [ -f "$target" ]; then
-    for s in "$PLAN_STATUS" "$PLAN_TASK_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "$PLAN_MODEL" "$PLAN_EFFORT" "at most $PLAN_MAX_FILES" $words; do
+    for s in "$PLAN_STATUS" "$PLAN_TASK_STATUS" "$PLAN_APPROVED" "$PLAN_VERBS" "$PLAN_RISK" "$PLAN_MODEL" "$PLAN_EFFORT" "$PLAN_TAGS" "at most $PLAN_MAX_FILES" $words; do
       grep -qiF -- "$s" "$target" || { echo "FAIL: drift-$name missing '$s'"; drift=0; }
     done
     if [ "$name" = agent ]; then

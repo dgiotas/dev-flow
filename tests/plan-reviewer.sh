@@ -64,7 +64,7 @@ if cmp -s "$ev/plan-review-arity/prompt.md" "$ev/plan-review-pass/prompt.md"; th
 if grep -qF '| `plan-reviewer` (routed) | Agent |' "$here/README.md"; then pass readme-agent-row; else bad readme-agent-row; fi
 if grep -qF '### Plan review' "$here/README.md"; then pass readme-section; else bad readme-section; fi
 if grep -qF '| `plan-reviewer` | the plan' "$here/README.md"; then pass readme-routing; else bad readme-routing; fi
-if grep -qF 'Agents 5' "$here/README.md"; then pass readme-inventory; else bad readme-inventory; fi
+if grep -qF 'Agents 13' "$here/README.md"; then pass readme-inventory; else bad readme-inventory; fi
 if grep -qF 'Six billed cases' "$here/README.md"; then pass readme-six; else bad readme-six; fi
 if grep -qF 'plan-review-arity' "$here/README.md"; then pass readme-arity; else bad readme-arity; fi
 if grep -qF 'plan-review-pass' "$here/README.md"; then pass readme-pass; else bad readme-pass; fi

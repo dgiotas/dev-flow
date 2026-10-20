@@ -126,7 +126,7 @@ Check `docker-compose.yml` / `compose.yaml` / `Dockerfile` and whether the neede
 - Container form: `docker compose exec -T <service> <command>`. Take the **service name** from the compose file's `services:` and the **container path** from its `volumes:` mapping — never guess either.
 - Always `-T` (hooks have no TTY; an interactive exec hangs). If the stack may not be running, prefer `docker compose run --rm <service> …`, or make the script skip cleanly when the service is down.
 - `force-container` / `force-host` in my arguments overrides your detection.
-- Templates to start from: `${CLAUDE_PLUGIN_ROOT}/templates/test-cmd.docker.example` and `lint-cmd.docker.example`.
+- Templates to start from: `${CLAUDE_PLUGIN_ROOT}/templates/test-cmd.docker.example` and `lint-cmd.docker.example`; for a frontend repo with a host toolchain, `frontend.test-cmd.example` and `frontend.lint-cmd.example` (tsc, eslint, vitest).
 
 ## 3. Write `.claude/test-cmd` (the stop gate)
 

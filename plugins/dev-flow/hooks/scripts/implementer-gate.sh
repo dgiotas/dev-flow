@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# PreToolUse gate on Agent and Task calls that start the dev-flow implementer.
+# PreToolUse gate on Agent and Task calls that start the dev-flow implementer or
+# one of the five tag-routed builders.
 #
 # It denies the call unless the plan named on a "Plan: <path>" line of the prompt
 # passes plan-check.sh and is approved. Deny = exit 2 with the reason on stderr;
 # nothing is ever printed on stdout.
 #
-# It allows every subagent_type except the one it gates (fail open, so other
-# agents keep working; build step 0 is the instruction-level backstop). For the
-# implementer it denies on every uncertain case: no jq, no plan line, a plan that
-# is missing, failing or unapproved. It also denies while the plan has an
-# unresolved BLOCKED deviation, so a BLOCKED task halts the build.
+# It gates the implementer and the five tag-routed builders and fails open for
+# every other subagent_type (so other agents keep working; build step 0 is the
+# instruction-level backstop). For the gated agents it denies on every uncertain
+# case: no jq, no plan line, a plan that is missing, failing or unapproved. It
+# also denies while the plan has an unresolved BLOCKED deviation, so a BLOCKED
+# task halts the build.
 set -u
 input=$(cat)
 checker="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/plan-check.sh"
-want=dev-flow:implementer   # subagent_type as the hook receives it; see README "Implementer gate"
 
 deny() {
   {
@@ -27,7 +28,7 @@ deny() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then
-  if printf '%s' "$input" | grep -q 'implementer'; then
+  if printf '%s' "$input" | grep -qE 'implementer|qa-engineer|devops-engineer|docs-writer'; then
     deny "jq is not on PATH, so the payload cannot be parsed. Install jq (brew install jq / apt install jq) outside this session, then retry."
   fi
   exit 0
@@ -37,7 +38,13 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 case "$tool" in Agent|Task) ;; *) exit 0 ;; esac
 
 type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type // empty')
-[ "$type" = "$want" ] || exit 0
+# subagent_type values as the hook receives them (prefixed, plus bare names in case
+# Claude Code passes them); see README "Implementer gate"
+case "$type" in
+  dev-flow:implementer|dev-flow:backend-implementer|dev-flow:frontend-implementer|dev-flow:qa-engineer|dev-flow:devops-engineer|dev-flow:docs-writer) ;;
+  implementer|backend-implementer|frontend-implementer|qa-engineer|devops-engineer|docs-writer) ;;
+  *) exit 0 ;;
+esac
 
 prompt=$(printf '%s' "$input" | jq -r '.tool_input.prompt // empty')
 plan=$(printf '%s\n' "$prompt" | sed -n 's/^Plan:[[:space:]]*\(.*\.md\)[[:space:]]*$/\1/p' | head -n 1)

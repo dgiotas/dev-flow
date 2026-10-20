@@ -62,7 +62,10 @@ imp=dev-flow:implementer
 run write-tool 0 '' Write "$imp" 'Plan: .claude/plans/bad.md'
 run general 0 '' Agent general-purpose 'Plan: .claude/plans/bad.md'
 run reviewer 0 '' Agent dev-flow:reviewer 'Plan: .claude/plans/bad.md'
-run bare-name 0 '' Agent implementer 'Plan: .claude/plans/bad.md'
+run bare-name 2 'error=header-status' Agent implementer 'Plan: .claude/plans/bad.md'
+run bare-name-no-plan 2 'no "Plan:' Agent qa-engineer 'do task 1'
+run bare-name-approved 0 '' Agent docs-writer 'Plan: .claude/plans/ok.md'
+run bare-reviewer 0 '' Agent reviewer 'Plan: .claude/plans/bad.md'
 run no-plan-line 2 'no "Plan:' Agent "$imp" 'do task 1'
 run missing-plan 2 'error=plan-missing' Agent "$imp" 'Plan: .claude/plans/nope.md'
 run failing 2 'error=header-status' Agent "$imp" 'Plan: .claude/plans/bad.md'
@@ -75,6 +78,12 @@ run mid-prompt 0 '' Agent "$imp" "$(printf 'Task 1\nPlan: .claude/plans/ok.md')"
 run absolute 0 '' Agent "$imp" "Plan: $P/.claude/plans/ok.md" "$tmp"
 
 run no-project-dir 2 'cannot enter CLAUDE_PROJECT_DIR' Agent "$imp" 'Plan: .claude/plans/ok.md' "$tmp/nope"
+
+for who in backend-implementer frontend-implementer qa-engineer devops-engineer docs-writer; do
+  run "$who-draft" 2 'is not approved' Agent "dev-flow:$who" 'Plan: .claude/plans/draft.md'
+  run "$who-approved" 0 '' Agent "dev-flow:$who" 'Plan: .claude/plans/ok.md'
+  run "$who-no-plan" 2 'no "Plan:' Agent "dev-flow:$who" 'do task 1'
+done
 
 # Deny message must not push the orchestrator to tick an unfinished task.
 msg=$(jq -n --arg p 'Plan: .claude/plans/bad.md' \
@@ -91,7 +100,7 @@ fi
 # jq missing: a bin dir with the other tools the script uses, but no jq.
 nojq=$tmp/nojq; mkdir "$nojq"
 for t in bash cat grep dirname sed head tail; do ln -s "$(command -v $t)" "$nojq/$t"; done
-for case in "implementer:2:BLOCKED" "reviewer:0:"; do
+for case in "implementer:2:BLOCKED" "backend-implementer:2:BLOCKED" "frontend-implementer:2:BLOCKED" "qa-engineer:2:BLOCKED" "devops-engineer:2:BLOCKED" "docs-writer:2:BLOCKED" "reviewer:0:"; do
   who=${case%%:*}; rest=${case#*:}; want_rc=${rest%%:*}; want_err=${rest#*:}
   out=$(printf '{"tool_name":"Agent","tool_input":{"subagent_type":"dev-flow:%s","prompt":"Plan: x.md"}}' "$who" \
     | PATH=$nojq CLAUDE_PROJECT_DIR="$P" bash "$gate" 2>"$tmp/err"); rc=$?
